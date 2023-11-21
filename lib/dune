@@ -5,4 +5,5 @@
 
 (library
  (name lib)
- (libraries str))
+ (libraries str)
+ (preprocess (pps ppx_deriving.show)))

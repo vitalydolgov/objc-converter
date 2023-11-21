@@ -1,14 +1,38 @@
-type statement =
-  | Dummy
+(** Basic component of an expression. *)
+type atom =
   | Int of int
+  | Var of string
 
-type method_comp =
-  | Label of string
-  | Type of string
-  | Identifier of string
-  | Return_type of string
-  | Body of statement list
+(** Binary operator. *)
+type binop =
+  | And
+  | Or
+  | Equal
+  | NotEqual
+  | Less
+  | Greater
+  | LessEqual
+  | GreaterEqual
+[@@deriving show { with_path = false }]
 
+(** Unary operator. *)
+type unary =
+  | Not
+[@@deriving show { with_path = false }]
+
+(** Expression is something that returns a result. *)
+type expr =
+  | Expr of expr
+  | Binary of binop * expr * expr
+  | Unary of unary * expr
+  | Atom of atom
+
+(** Statement is something that returns no result. *)
+type statement =
+  | If of expr * statement list
+  | Dummy
+
+(** Declaration that compose a program. *)
 type declar =
   | Method of { ident : string;
                 args : (string * string * string) list;
@@ -16,6 +40,15 @@ type declar =
                 body : statement list }
 
 type program = Program of declar list
+
+(* Helper types *)
+
+type method_comp =
+  | Label of string
+  | Type of string
+  | Identifier of string
+  | Return_type of string
+  | Body of statement list
 
 let find_last_preposition ident =
   let prepositions = ["For"; "With"; "From"; "In"; "At"] in
@@ -53,6 +86,7 @@ let split_name_label ident =
       with
       | Not_found -> None)
 
+(* Produces a method from components and statements (its body). *)
 let make_method comps body =
   let labels =
     List.filter (function Label _ -> true | _ -> false) comps
@@ -95,9 +129,33 @@ let make_method comps body =
 let string_of_list to_string lis =
   "[" ^ (String.concat "; " (List.map to_string lis)) ^ "]"
 
-let dump_statement = function
-  | Dummy -> "Dummy"
+let dump_atom = function
   | Int i -> "Int " ^ string_of_int i
+  | Var s -> "Var " ^ s
+
+let rec dump_expr = function
+  | Expr e -> "(" ^ dump_expr e ^ ")"
+  | Atom a -> "(" ^ dump_atom a ^ ")"
+  | Binary (op, e1, e2) -> dump_binop_expr op e1 e2
+  | Unary (op, e) -> dump_unary_expr op e
+
+and dump_binop_expr op e1 e2 =
+  Printf.sprintf "(%s %s %s)"
+    (show_binop op)
+    (dump_expr e1)
+    (dump_expr e2)
+
+and dump_unary_expr op e =
+  Printf.sprintf "(%s %s)"
+    (show_unary op)
+    (dump_expr e)
+
+let rec dump_statement = function
+  | If (e, l) ->
+     Printf.sprintf "(If %s %s)"
+       (dump_expr e)
+       (string_of_list dump_statement l)
+  | Dummy -> "Dummy"
 
 let dump_method_comp = function
   | Label s -> "Label " ^ s
