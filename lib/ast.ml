@@ -1,7 +1,9 @@
 (** Basic component of an expression. *)
 type atom =
   | Int of int
+  | Float of float
   | Var of string
+  | Null
 
 (** Binary operator. *)
 type binop =
@@ -30,7 +32,8 @@ type expr =
 (** Statement is something that returns no result. *)
 type statement =
   | If of expr * statement list
-  | Dummy
+  | NewVar of string * string * expr
+  | Mutate of string * expr
 
 (** Declaration that compose a program. *)
 type declar =
@@ -131,10 +134,13 @@ let string_of_list to_string lis =
 
 let dump_atom = function
   | Int i -> "Int " ^ string_of_int i
+  | Float f -> "Float " ^ string_of_float f
   | Var s -> "Var " ^ s
+  | Null -> "NULL"
 
 let rec dump_expr = function
   | Expr e -> "(" ^ dump_expr e ^ ")"
+  | Atom Null -> dump_atom Null
   | Atom a -> "(" ^ dump_atom a ^ ")"
   | Binary (op, e1, e2) -> dump_binop_expr op e1 e2
   | Unary (op, e) -> dump_unary_expr op e
@@ -155,7 +161,12 @@ let rec dump_statement = function
      Printf.sprintf "(If %s %s)"
        (dump_expr e)
        (string_of_list dump_statement l)
-  | Dummy -> "Dummy"
+  | NewVar (t, s, e) ->
+     Printf.sprintf "(NewVar %s %s := %s)"
+       t s (dump_expr e)
+  | Mutate (s, e) ->
+     Printf.sprintf "(Mutate %s := %s)"
+       s (dump_expr e)
 
 let dump_method_comp = function
   | Label s -> "Label " ^ s

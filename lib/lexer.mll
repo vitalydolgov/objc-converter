@@ -18,12 +18,16 @@ let newline = '\n'
 rule read = parse
   | whitespace { read lexbuf }
   | newline { Lexing.new_line lexbuf; read lexbuf }
+
   | int { INT (Lexing.lexeme lexbuf |> int_of_string) }
   | float { FLOAT (Lexing.lexeme lexbuf |> float_of_string) }
+  | "NULL" { NULL }
 
   | ":" { COLON }
+  | ";" { SEMICOLON }
   | "*" { ASTERISK }
   | "-" { MINUS }
+  | "=" { ASSIGN }
 
   (* Logic *)
   | "&&" { AND }

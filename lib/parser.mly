@@ -6,10 +6,13 @@
 
 %token <int> INT
 %token <float> FLOAT
+%token NULL
 
 %token COLON
 %token ASTERISK
 %token MINUS
+%token ASSIGN
+%token SEMICOLON
 
 (* Parentheses *)
 
@@ -33,6 +36,7 @@
 %token <string> IDENT
 %token EOF
 
+%left ASSIGN
 %left OR
 %left AND
 %left EQU NEQ LEQ GEQ LES GRT
@@ -62,11 +66,12 @@ method_comp:
 
 statement:
   | IF LPAREN; e = expr RPAREN LBLOCK; b = statement* RBLOCK { If (e, b) }
-  | INT { Dummy }
+  | t=IDENT ASTERISK? s=IDENT SEMICOLON { NewVar (t, s, Atom Null) }
+  | t=IDENT ASTERISK? s=IDENT ASSIGN e = expr SEMICOLON { NewVar (t, s, e) }
+  | s=IDENT ASSIGN e = expr SEMICOLON { Mutate (s, e) }
 
 expr:
   | LPAREN; e = expr RPAREN { Expr e }
-  | NOT; e = expr { Unary(Not, e) }
   | e1 = expr EQU; e2 = expr { Binary (Equal, e1, e2) }
   | e1 = expr NEQ; e2 = expr { Binary (NotEqual, e1, e2) }
   | e1 = expr LES; e2 = expr { Binary (Less, e1, e2) }
@@ -75,8 +80,11 @@ expr:
   | e1 = expr GEQ; e2 = expr { Binary (GreaterEqual, e1, e2) }
   | e1 = expr AND; e2 = expr { Binary (And, e1, e2) }
   | e1 = expr OR; e2 = expr { Binary (Or, e1, e2) }
+  | NOT; e = expr { Unary (Not, e) }
   | a = atom { Atom a }
 
 atom:
   | i=INT { Int i }
+  | f=FLOAT { Float f }
   | s=IDENT { Var s }
+  | NULL { Null }
