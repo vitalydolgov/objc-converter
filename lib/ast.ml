@@ -34,6 +34,7 @@ type statement =
   | If of expr * statement list
   | NewVar of string * string * expr
   | Mutate of string * expr
+  | Comment of string
 
 (** Declaration that compose a program. *)
 type declar =
@@ -126,11 +127,12 @@ let make_method comps body =
            return_type = return_type;
            body = body }
 
-
 (* Debug *)
 
 let string_of_list to_string lis =
   "[" ^ (String.concat "; " (List.map to_string lis)) ^ "]"
+
+let wrap_in_parens str = "(" ^ str ^ ")"
 
 let dump_atom = function
   | Int i -> "Int " ^ string_of_int i
@@ -158,15 +160,16 @@ and dump_unary_expr op e =
 
 let rec dump_statement = function
   | If (e, l) ->
-     Printf.sprintf "(If %s %s)"
+     Printf.sprintf "If %s %s"
        (dump_expr e)
        (string_of_list dump_statement l)
   | NewVar (t, s, e) ->
-     Printf.sprintf "(NewVar %s %s := %s)"
+     Printf.sprintf "NewVar %s %s := %s"
        t s (dump_expr e)
   | Mutate (s, e) ->
-     Printf.sprintf "(Mutate %s := %s)"
+     Printf.sprintf "Mutate %s := %s"
        s (dump_expr e)
+  | Comment s -> "Comment // " ^ s
 
 let dump_method_comp = function
   | Label s -> "Label " ^ s
@@ -188,7 +191,7 @@ let dump_declar = function
        declar.return_type
        declar.ident
        (string_of_list dump_method_arg declar.args)
-       (string_of_list dump_statement declar.body)
+       (string_of_list (fun s -> s |> dump_statement |> wrap_in_parens) declar.body)
 
 let dump_program (Program declars) =
   string_of_list dump_declar declars

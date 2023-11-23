@@ -12,12 +12,14 @@ let identifier = alpha (alpha | digit)*
 
 let whitespace = [' ' '\t']+
 let newline = '\n'
+let comment = "//" [' ' '\t']* ([^ '\n']* as com)
 
 (* Rules *)
 
 rule read = parse
   | whitespace { read lexbuf }
   | newline { Lexing.new_line lexbuf; read lexbuf }
+  | comment { COMMENT (com) }
 
   | int { INT (Lexing.lexeme lexbuf |> int_of_string) }
   | float { FLOAT (Lexing.lexeme lexbuf |> float_of_string) }

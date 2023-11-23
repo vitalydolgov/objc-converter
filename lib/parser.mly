@@ -7,6 +7,7 @@
 %token <int> INT
 %token <float> FLOAT
 %token NULL
+%token <string> COMMENT
 
 %token COLON
 %token ASTERISK
@@ -69,6 +70,7 @@ statement:
   | t=IDENT ASTERISK? s=IDENT SEMICOLON { NewVar (t, s, Atom Null) }
   | t=IDENT ASTERISK? s=IDENT ASSIGN e = expr SEMICOLON { NewVar (t, s, e) }
   | s=IDENT ASSIGN e = expr SEMICOLON { Mutate (s, e) }
+  | s=COMMENT { Comment s }
 
 expr:
   | LPAREN; e = expr RPAREN { Expr e }
