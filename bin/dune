@@ -1,4 +1,4 @@
 (executable
  (public_name objc_converter)
  (name main)
- (libraries lib))
+ (libraries objc_converter))

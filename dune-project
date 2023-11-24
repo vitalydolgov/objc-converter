@@ -1,6 +1,8 @@
 (lang dune 3.11)
 (using menhir 2.0)
 
+(name objc-converter)
+
 (generate_opam_files)
 
 (package

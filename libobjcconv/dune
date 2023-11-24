@@ -1,0 +1,14 @@
+(executable
+ (name libobjcconv)
+ (libraries objc_converter)
+ (foreign_stubs (language c) (names wrap))
+ (modes shared_object))
+
+(alias
+ (name export)
+ (deps (alias update-id)))
+
+(rule
+ (alias update-id)
+ (deps (:artifact libobjcconv.so))
+ (action (run install_name_tool -id @rpath/%{artifact} %{artifact})))
