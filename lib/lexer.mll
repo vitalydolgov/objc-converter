@@ -8,7 +8,7 @@ let alpha = ['a'-'z' 'A'-'Z']
 let int = '-'? digit+
 let float = '-'? digit+ '.' digit+
 
-let identifier = alpha (alpha | digit)*
+let identifier = (alpha | '_') (alpha | digit | '_')*
 
 let whitespace = [' ' '\t']+
 let newline = '\n'
@@ -23,10 +23,12 @@ rule read = parse
 
   | int { INT (Lexing.lexeme lexbuf |> int_of_string) }
   | float { FLOAT (Lexing.lexeme lexbuf |> float_of_string) }
+
   | "NULL" { NULL }
 
   | ":" { COLON }
   | ";" { SEMICOLON }
+  | "." { DOT }
   | "*" { ASTERISK }
   | "-" { MINUS }
   | "=" { ASSIGN }
@@ -47,6 +49,11 @@ rule read = parse
   | ")" { RPAREN }
   | "{" { LBLOCK }
   | "}" { RBLOCK }
+  | "[" { LBRACK }
+  | "]" { RBRACK }
+
+  | "self" { SELF }
+  | "nil" { NIL }
 
   | "if" { IF }
   

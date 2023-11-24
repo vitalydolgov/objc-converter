@@ -7,6 +7,7 @@
 %token <int> INT
 %token <float> FLOAT
 %token NULL
+%token SELF NIL
 %token <string> COMMENT
 
 %token COLON
@@ -14,11 +15,13 @@
 %token MINUS
 %token ASSIGN
 %token SEMICOLON
+%token DOT
 
 (* Parentheses *)
 
 %token LPAREN RPAREN
 %token LBLOCK RBLOCK
+%token LBRACK RBRACK
 
 (* Keywords *)
 
@@ -37,7 +40,6 @@
 %token <string> IDENT
 %token EOF
 
-%left ASSIGN
 %left OR
 %left AND
 %left EQU NEQ LEQ GEQ LES GRT
@@ -70,10 +72,15 @@ statement:
   | t=IDENT ASTERISK? s=IDENT SEMICOLON { NewVar (t, s, Atom Null) }
   | t=IDENT ASTERISK? s=IDENT ASSIGN e = expr SEMICOLON { NewVar (t, s, e) }
   | s=IDENT ASSIGN e = expr SEMICOLON { Mutate (s, e) }
+  | SELF DOT s=IDENT ASSIGN e = expr SEMICOLON { Mutate (s, e) }
   | s=COMMENT { Comment s }
+  | e = expr SEMICOLON { Expr e }
 
 expr:
   | LPAREN; e = expr RPAREN { Expr e }
+  | LBRACK; e = expr s=IDENT RBRACK { Message (e, s, []) }
+  | LBRACK; e = expr; l = list(s=IDENT COLON; e=expr { (s, e) }) RBRACK
+    { Message (e, List.hd l |> fst, l) }
   | e1 = expr EQU; e2 = expr { Binary (Equal, e1, e2) }
   | e1 = expr NEQ; e2 = expr { Binary (NotEqual, e1, e2) }
   | e1 = expr LES; e2 = expr { Binary (Less, e1, e2) }
@@ -89,4 +96,7 @@ atom:
   | i=INT { Int i }
   | f=FLOAT { Float f }
   | s=IDENT { Var s }
+  | SELF DOT s=IDENT { Prop s }
+  | SELF { Self }
   | NULL { Null }
+  | NIL { Nil }

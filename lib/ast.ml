@@ -3,7 +3,10 @@ type atom =
   | Int of int
   | Float of float
   | Var of string
+  | Prop of string
+  | Self
   | Null
+  | Nil
 
 (** Binary operator. *)
 type binop =
@@ -28,6 +31,7 @@ type expr =
   | Binary of binop * expr * expr
   | Unary of unary * expr
   | Atom of atom
+  | Message of expr * string * (string * expr) list
 
 (** Statement is something that returns no result. *)
 type statement =
@@ -35,6 +39,7 @@ type statement =
   | NewVar of string * string * expr
   | Mutate of string * expr
   | Comment of string
+  | Expr of expr
 
 (** Declaration that compose a program. *)
 type declar =
@@ -79,7 +84,7 @@ let split_name_label ident =
   let prep = find_last_preposition ident in
   Option.bind prep (fun prep ->
       let rex =
-        Printf.sprintf "\\([A-Za-z0-9]+\\)\\(%s[A-Za-z0-9]*\\)$" prep
+        Printf.sprintf "\\([A-Za-z0-9_]+\\)\\(%s[A-Za-z0-9]*\\)$" prep
         |> Str.regexp
       in
       try
@@ -132,31 +137,44 @@ let make_method comps body =
 let string_of_list to_string lis =
   "[" ^ (String.concat "; " (List.map to_string lis)) ^ "]"
 
-let wrap_in_parens str = "(" ^ str ^ ")"
+let wrap_in_parens str =
+  if String.contains str ' ' then
+    "(" ^ str ^ ")"
+  else
+    str
 
 let dump_atom = function
   | Int i -> "Int " ^ string_of_int i
   | Float f -> "Float " ^ string_of_float f
   | Var s -> "Var " ^ s
+  | Prop s -> "Prop " ^ s
+  | Self -> "Self"
   | Null -> "NULL"
+  | Nil -> "Nil"
 
 let rec dump_expr = function
-  | Expr e -> "(" ^ dump_expr e ^ ")"
-  | Atom Null -> dump_atom Null
-  | Atom a -> "(" ^ dump_atom a ^ ")"
+  | Atom a -> dump_atom a
+  | Expr e -> dump_expr e
   | Binary (op, e1, e2) -> dump_binop_expr op e1 e2
   | Unary (op, e) -> dump_unary_expr op e
+  | Message (expr, name, args) ->
+     let string_of_args =
+       string_of_list (fun (s, e) -> s ^ ": " ^ (dump_expr e))
+     in
+     Printf.sprintf "Message %s . %s %s"
+       (dump_expr expr |> wrap_in_parens) name
+       (string_of_args args)
 
 and dump_binop_expr op e1 e2 =
   Printf.sprintf "(%s %s %s)"
     (show_binop op)
-    (dump_expr e1)
-    (dump_expr e2)
+    (dump_expr e1 |> wrap_in_parens)
+    (dump_expr e2 |> wrap_in_parens)
 
 and dump_unary_expr op e =
   Printf.sprintf "(%s %s)"
     (show_unary op)
-    (dump_expr e)
+    (dump_expr e |> wrap_in_parens)
 
 let rec dump_statement = function
   | If (e, l) ->
@@ -170,6 +188,7 @@ let rec dump_statement = function
      Printf.sprintf "Mutate %s := %s"
        s (dump_expr e)
   | Comment s -> "Comment // " ^ s
+  | Expr e -> dump_expr e
 
 let dump_method_comp = function
   | Label s -> "Label " ^ s
