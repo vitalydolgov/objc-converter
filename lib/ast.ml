@@ -34,12 +34,13 @@ type expr =
   | Message of expr * string * (string * expr) list
 
 (** Statement is something that returns no result. *)
-type statement =
+and statement =
   | If of expr * statement list
+  | Else of [`NoCond of statement list | `Cond of statement]
   | NewVar of string * string * expr
   | Mutate of string * expr
   | Comment of string
-  | Expr of expr
+  | Exec of expr
 
 (** Declaration that compose a program. *)
 type declar =
@@ -176,11 +177,15 @@ and dump_unary_expr op e =
     (show_unary op)
     (dump_expr e |> wrap_in_parens)
 
-let rec dump_statement = function
+and dump_statement = function
   | If (e, l) ->
      Printf.sprintf "If %s %s"
        (dump_expr e)
        (string_of_list dump_statement l)
+  | Else (`NoCond l) ->
+     "Else " ^ (string_of_list dump_statement l)
+  | Else (`Cond s) ->
+     "Else " ^ (dump_statement s)
   | NewVar (t, s, e) ->
      Printf.sprintf "NewVar %s %s := %s"
        t s (dump_expr e)
@@ -188,7 +193,9 @@ let rec dump_statement = function
      Printf.sprintf "Mutate %s := %s"
        s (dump_expr e)
   | Comment s -> "Comment // " ^ s
-  | Expr e -> dump_expr e
+  | Exec e -> dump_expr e
+
+(* Declarations *)
 
 let dump_method_comp = function
   | Label s -> "Label " ^ s

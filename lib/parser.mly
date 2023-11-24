@@ -11,11 +11,11 @@
 %token <string> COMMENT
 
 %token COLON
-%token ASTERISK
-%token MINUS
-%token ASSIGN
 %token SEMICOLON
 %token DOT
+%token ASSIGN
+%token ASTERISK
+%token MINUS
 
 (* Parentheses *)
 
@@ -25,7 +25,7 @@
 
 (* Keywords *)
 
-%token IF
+%token IF ELSE
 
 (* Operators *)
 
@@ -69,28 +69,34 @@ method_comp:
 
 statement:
   | IF LPAREN; e = expr RPAREN LBLOCK; b = statement* RBLOCK { If (e, b) }
+  | ELSE IF LPAREN; e = expr RPAREN LBLOCK; b = statement* RBLOCK
+    { Else (`Cond (If (e, b))) }
+  | ELSE LBLOCK; b = statement* RBLOCK { Else (`NoCond b) }
   | t=IDENT ASTERISK? s=IDENT SEMICOLON { NewVar (t, s, Atom Null) }
   | t=IDENT ASTERISK? s=IDENT ASSIGN e = expr SEMICOLON { NewVar (t, s, e) }
   | s=IDENT ASSIGN e = expr SEMICOLON { Mutate (s, e) }
   | SELF DOT s=IDENT ASSIGN e = expr SEMICOLON { Mutate (s, e) }
   | s=COMMENT { Comment s }
-  | e = expr SEMICOLON { Expr e }
+  | e = expr SEMICOLON { Exec e }
 
 expr:
   | LPAREN; e = expr RPAREN { Expr e }
   | LBRACK; e = expr s=IDENT RBRACK { Message (e, s, []) }
-  | LBRACK; e = expr; l = list(s=IDENT COLON; e=expr { (s, e) }) RBRACK
+  | LBRACK; e = expr; l = list(s=IDENT COLON; e = expr { (s, e) }) RBRACK
     { Message (e, List.hd l |> fst, l) }
-  | e1 = expr EQU; e2 = expr { Binary (Equal, e1, e2) }
-  | e1 = expr NEQ; e2 = expr { Binary (NotEqual, e1, e2) }
-  | e1 = expr LES; e2 = expr { Binary (Less, e1, e2) }
-  | e1 = expr GRT; e2 = expr { Binary (Greater, e1, e2) }
-  | e1 = expr LEQ; e2 = expr { Binary (LessEqual, e1, e2) }
-  | e1 = expr GEQ; e2 = expr { Binary (GreaterEqual, e1, e2) }
-  | e1 = expr AND; e2 = expr { Binary (And, e1, e2) }
-  | e1 = expr OR; e2 = expr { Binary (Or, e1, e2) }
+  | e1 = expr; op = binop; e2 = expr { Binary (op, e1, e2) }
   | NOT; e = expr { Unary (Not, e) }
   | a = atom { Atom a }
+
+%inline binop:
+  | EQU { Equal }
+  | NEQ { NotEqual }
+  | LES { Less }
+  | GRT { Greater }
+  | LEQ { LessEqual }
+  | GEQ { GreaterEqual }
+  | AND { And }
+  | OR { Or }
 
 atom:
   | i=INT { Int i }

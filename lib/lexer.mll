@@ -56,6 +56,7 @@ rule read = parse
   | "nil" { NIL }
 
   | "if" { IF }
+  | "else" { ELSE }
   
   | identifier { IDENT (Lexing.lexeme lexbuf) }
   | eof { EOF }
