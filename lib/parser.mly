@@ -13,6 +13,8 @@
 %token COLON
 %token SEMICOLON
 %token DOT
+%token COMMA
+%token CARET
 %token ASSIGN
 %token ASTERISK
 %token MINUS
@@ -83,7 +85,12 @@ expr:
   | LPAREN; e = expr RPAREN { Expr e }
   | LBRACK; e = expr s=IDENT RBRACK { Message (e, s, []) }
   | LBRACK; e = expr; l = list(s=IDENT COLON; e = expr { (s, e) }) RBRACK
-    { Message (e, List.hd l |> fst, l) }
+    { make_message e l }
+  | CARET; t = ioption(LPAREN s=IDENT ASTERISK? RPAREN { s })
+    LBLOCK; b = statement* RBLOCK { Block (t, [], b) }
+  | CARET; t = ioption(LPAREN s=IDENT ASTERISK? RPAREN { s })
+    LPAREN l = separated_list(COMMA, t=IDENT ASTERISK* s=IDENT { (t, s) }) RPAREN
+    LBLOCK; b = statement* RBLOCK { Block (t, l, b) }
   | e1 = expr; op = binop; e2 = expr { Binary (op, e1, e2) }
   | NOT; e = expr { Unary (Not, e) }
   | a = atom { Atom a }

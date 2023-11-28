@@ -32,6 +32,8 @@ type expr =
   | Unary of unary * expr
   | Atom of atom
   | Message of expr * string * (string * expr) list
+  (* return type, parameters with types, body *)
+  | Block of string option * (string * string) list * statement list
 
 (** Statement is something that returns no result. *)
 and statement =
@@ -45,6 +47,7 @@ and statement =
 (** Declaration that compose a program. *)
 type declar =
   | Method of { ident : string;
+                (* label, type, name *)
                 args : (string * string * string) list;
                 return_type : string;
                 body : statement list }
@@ -95,6 +98,19 @@ let split_name_label ident =
         Some (name, label)
       with
       | Not_found -> None)
+
+(* Produces a method invocation from receiver and message arguments. *)
+let make_message recv args =
+  let labels, exprs = List.split args in
+  let name, label =
+    let ident = List.hd labels in
+    match split_name_label ident with
+    | Some (name, label) -> name, label
+    | None -> ident, "_"
+  in
+  let new_labels = (label :: List.tl labels) in
+  let new_args = List.combine new_labels exprs in
+  Message (recv, name, new_args)
 
 (* Produces a method from components and statements (its body). *)
 let make_method comps body =
@@ -165,6 +181,14 @@ let rec dump_expr = function
      Printf.sprintf "Message %s . %s %s"
        (dump_expr expr |> wrap_in_parens) name
        (string_of_args args)
+  | Block (ret_type, params, body) ->
+     let string_of_param (typ, name) =
+       Printf.sprintf "Type %s Name %s" typ name
+     in
+     Printf.sprintf "Block Return_type %s Params: %s Body: %s"
+       (match ret_type with Some t -> t | None -> "void")
+       (string_of_list string_of_param params)
+       (string_of_list dump_statement body)
 
 and dump_binop_expr op e1 e2 =
   Printf.sprintf "(%s %s %s)"

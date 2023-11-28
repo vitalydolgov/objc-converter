@@ -29,9 +29,11 @@ rule read = parse
   | ":" { COLON }
   | ";" { SEMICOLON }
   | "." { DOT }
+  | "," { COMMA }
   | "*" { ASTERISK }
   | "-" { MINUS }
   | "=" { ASSIGN }
+  | "^" { CARET }
 
   (* Logic *)
   | "&&" { AND }
