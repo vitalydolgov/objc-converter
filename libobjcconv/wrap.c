@@ -11,3 +11,12 @@ char * process(char const *str)
   char *result = strdup(String_val(caml_callback(*process_closure, str_value)));
   return result;
 }
+
+char * dump(char const *str)
+{
+  static const value *dump_closure = NULL;
+  if (dump_closure == NULL) dump_closure = caml_named_value("dump");
+  value str_value = caml_copy_string(str);
+  char *result = strdup(String_val(caml_callback(*dump_closure, str_value)));
+  return result;
+}

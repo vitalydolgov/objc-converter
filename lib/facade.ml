@@ -20,6 +20,14 @@ let parse_program str =
 let process str =
   try
     let program = parse_program str in
+    Converter.process program
+  with
+  | Failure mesg -> mesg
+
+
+let dump str =
+  try
+    let program = parse_program str in
     dump_program program
   with
   | Failure mesg -> mesg
