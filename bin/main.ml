@@ -8,6 +8,9 @@ let read_file filename =
 
 let _ =
   let file = Array.get Sys.argv 1 in
+  let is_dump =
+    try (Array.get Sys.argv 2) = "dump" with
+    | Invalid_argument _ -> false in
   let text = read_file file in
-  let output = process text in
+  let output = if not is_dump then process text else dump text in
   print_endline output

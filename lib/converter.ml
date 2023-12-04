@@ -11,9 +11,15 @@ let drop_prefix typ =
   let len = String.length typ - 2 in
   String.sub (StringSet.find typ legacy_types) 2 len
 
-let map_type typ =
-  try drop_prefix typ with
-  | Not_found -> typ
+let map_type = function
+  | Simple t ->
+     begin
+       try drop_prefix t with
+       | Not_found -> t
+     end
+  | Generic (g, t) -> Printf.sprintf "%s<%s>" g t
+  | Void -> "Void"
+  | Any -> "Any"
 
 let indent_region str =
   String.split_on_char '\n' str
@@ -21,7 +27,7 @@ let indent_region str =
          String.make 4 ' ' ^ line)
   |> String.concat "\n"
 
-let convert_decl_args args =
+let convert_params args =
   if args = [] then ""
   else
     let (label, _, _) = List.hd args in
@@ -63,13 +69,16 @@ let rec convert_statement = function
      Printf.sprintf "else %s"
        (convert_statement stat)
   | NewVar (_, name, expr) ->
-     Printf.sprintf "var %s = %s"
+     Printf.sprintf "let %s = %s"
        name (convert_expr expr)
-  | Mutate (name, expr) ->
+  | Mutate (expr1, expr2) ->
      Printf.sprintf "%s = %s"
-       name (convert_expr expr)
+       (convert_expr expr1)
+       (convert_expr expr2)
   | Comment comm -> "// " ^ comm
   | Exec expr -> convert_expr expr
+  | Return None -> "return"
+  | Return (Some expr) -> "return " ^ (convert_expr expr)
 
 and convert_expr = function
   | Expr expr -> "(" ^ convert_expr expr ^ ")"
@@ -85,20 +94,34 @@ and convert_expr = function
   | Atom atom -> convert_atom atom
   | Message (Atom Self, ident, args) ->
      Printf.sprintf "%s(%s)"
-       ident
-       (convert_invoc_args (convert_expr) args)
+       ident (convert_invoc_args (convert_expr) args)
+  | Message (expr, "alloc", []) ->
+     Printf.sprintf "%s" (convert_expr expr)
+  | Message (expr1, "isEqualToString", [("_", expr2)]) ->
+     Printf.sprintf "%s == %s"
+       (convert_expr expr1)
+       (convert_expr expr2)
   | Message (expr, ident, args) ->
      Printf.sprintf "%s.%s(%s)"
-       (convert_expr expr)
-       ident
+       (convert_expr expr) ident
        (convert_invoc_args (convert_expr) args)
+  | Property (Atom Self, ident) -> ident
+  | Property (expr, ident) ->
+     Printf.sprintf "%s.%s" (convert_expr expr) ident
   | Block (_, [], body) ->
-     Printf.sprintf "{\n%s\n}"
-       (convert_body_indented body)
+     Printf.sprintf "{\n%s\n}" (convert_body_indented body)
   | Block (_, args, body) ->
      Printf.sprintf "{ %s in\n%s\n}"
        (convert_block_args args)
        (convert_body_indented body)
+  | TypeCast (typ, ident) ->
+     Printf.sprintf "(%s as! %s)" ident (map_type typ)
+  | Element (expr1, expr2) ->
+     Printf.sprintf "%s[%s]"
+       (convert_expr expr1)
+       (convert_expr expr2)
+  | Func1 (ident, expr) ->
+     Printf.sprintf "%s(%s)" ident (convert_expr expr)
 
 and convert_binop = function
   | And -> "&&"
@@ -114,25 +137,31 @@ and convert_unary = function
   | Not -> "!"
 
 and convert_atom = function
+  | Ignore s -> "#" ^ s ^ "#"
   | Int i -> string_of_int i
   | Float f -> string_of_float f
+  | Bool b -> string_of_bool b
+  | String s -> "\"" ^ s ^ "\""
   | Var x | Prop x -> x
+  | TypeRef s -> s ^ ".self"
   | Self -> "self"
-  | Nil -> "nil"
-  | Null -> assert false
+  | Nil | Null -> "nil"
+  | Type t -> map_type t
+  | Constant s -> s
+  | Selector s -> "Selector(" ^ s ^ ")"
 
 and convert_body_indented body =
   List.map convert_statement body |> String.concat "\n" |> indent_region
 
 let convert_return_type typ =
-  if typ = "void" then ""
+  if typ = Void then ""
   else " -> " ^ map_type typ
 
 let convert_declar = function
-  | Method { ident; args; return_type; body } ->
-     Printf.sprintf "func %s(%s)%s {\n%s\n}"
+  | Method { ident; params; return_type; body } ->
+     Printf.sprintf "@objc public func %s(%s)%s {\n%s\n}"
        ident
-       (convert_decl_args args)
+       (convert_params params)
        (convert_return_type return_type)
        (convert_body_indented body)
 

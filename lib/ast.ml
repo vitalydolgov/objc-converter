@@ -1,9 +1,22 @@
+type typ =
+  | Simple of string
+  | Generic of string * string
+  | Void
+  | Any
+
 (** Basic component of an expression. *)
 type atom =
+  | Ignore of string
   | Int of int
   | Float of float
+  | Bool of bool
+  | String of string
   | Var of string
   | Prop of string
+  | TypeRef of string
+  | Type of typ
+  | Selector of string
+  | Constant of string
   | Self
   | Null
   | Nil
@@ -32,24 +45,29 @@ type expr =
   | Unary of unary * expr
   | Atom of atom
   | Message of expr * string * (string * expr) list
+  | Property of expr * string
   (* return type, parameters with types, body *)
-  | Block of string option * (string * string) list * statement list
+  | Block of typ * (typ * string) list * statement list
+  | TypeCast of typ * string
+  | Element of expr * expr
+  | Func1 of string * expr
 
 (** Statement is something that returns no result. *)
 and statement =
   | If of expr * statement list
   | Else of [`NoCond of statement list | `Cond of statement]
-  | NewVar of string * string * expr
-  | Mutate of string * expr
+  | NewVar of typ * string * expr
+  | Mutate of expr * expr
   | Comment of string
   | Exec of expr
+  | Return of expr option
 
 (** Declaration that compose a program. *)
 type declar =
   | Method of { ident : string;
                 (* label, type, name *)
-                args : (string * string * string) list;
-                return_type : string;
+                params : (string * typ * string) list;
+                return_type : typ;
                 body : statement list }
 
 type program = Program of declar list
@@ -58,9 +76,9 @@ type program = Program of declar list
 
 type method_comp =
   | Label of string
-  | Type of string
+  | Param_type of typ
   | Identifier of string
-  | Return_type of string
+  | Return_type of typ
   | Body of statement list
 
 let find_last_preposition ident =
@@ -112,26 +130,14 @@ let make_message recv args =
   let new_args = List.combine new_labels exprs in
   Message (recv, name, new_args)
 
-(* Produces a method from components and statements (its body). *)
-let make_method comps body =
-  let labels =
-    List.filter (function Label _ -> true | _ -> false) comps
-    |> List.map (function Label s -> s | _ -> assert false)
-  in
-  let types =
-    List.filter (function Type _ -> true | _ -> false) comps
-    |> List.map (function Type s -> s | _ -> assert false)
-  in
-  let identifiers =
-    List.filter (function Identifier _ -> true | _ -> false) comps
-    |> List.map (function Identifier s -> s | _ -> assert false)
-  in
-  let return_type =
-    let [@warning "-8"] Return_type typ =
-      List.find (function Return_type _ -> true | _ -> false) comps
-    in
-    typ
-  in
+
+let make_method_wo_params return_type name body =
+  Method { ident = name;
+           params = [];
+           return_type = return_type;
+           body = body }
+
+let make_method_w_params return_type labels types identifiers body =
   let name, label =
     let ident = List.hd labels in
     match split_name_label ident with
@@ -145,9 +151,41 @@ let make_method comps body =
       (label :: List.tl labels)
   in
   Method { ident = name;
-           args = args;
+           params = args;
            return_type = return_type;
            body = body }
+
+(* Produces a method from components and statements (its body). *)
+let make_method comps body =
+  let labels =
+    List.filter (function Label _ -> true | _ -> false) comps
+    |> List.map (function Label s -> s | _ -> assert false)
+  in
+  let types =
+    List.filter (function Param_type _ -> true | _ -> false) comps
+    |> List.map (function Param_type t -> t | _ -> assert false)
+  in
+  let identifiers =
+    List.filter (function Identifier _ -> true | _ -> false) comps
+    |> List.map (function Identifier s -> s | _ -> assert false)
+  in
+  let return_type =
+    let [@warning "-8"] Return_type typ =
+      List.find (function Return_type _ -> true | _ -> false) comps
+    in
+    typ
+  in
+  if labels = [] then
+    make_method_wo_params return_type (List.hd identifiers) body
+  else
+    make_method_w_params return_type labels types identifiers body
+
+let make_type t = function
+  | Some s -> Generic (t, s)
+  | None -> match t with
+            | "void" -> Void
+            | "id" -> Any
+            | _ -> Simple t
 
 (* Debug *)
 
@@ -160,14 +198,28 @@ let wrap_in_parens str =
   else
     str
 
+let dump_type = function
+  | Generic (t, s) ->
+     Printf.sprintf "GenericType %s<%s>" t s
+  | Simple t -> "Type " ^ t
+  | Void -> "Void"
+  | Any -> "Any"
+
 let dump_atom = function
+  | Ignore s -> "# " ^ s ^ " #"
   | Int i -> "Int " ^ string_of_int i
   | Float f -> "Float " ^ string_of_float f
+  | Bool b -> "Bool " ^ string_of_bool b
+  | String s -> "String " ^ s
   | Var s -> "Var " ^ s
   | Prop s -> "Prop " ^ s
+  | TypeRef s -> "Type " ^ s
   | Self -> "Self"
   | Null -> "NULL"
   | Nil -> "Nil"
+  | Type t -> dump_type t
+  | Constant s -> "Constant " ^ s
+  | Selector s -> "Selector " ^ s
 
 let rec dump_expr = function
   | Atom a -> dump_atom a
@@ -181,14 +233,26 @@ let rec dump_expr = function
      Printf.sprintf "Message %s . %s %s"
        (dump_expr expr |> wrap_in_parens) name
        (string_of_args args)
+  | Property (expr, ident) ->
+     Printf.sprintf "Property %s . %s"
+       (dump_expr expr |> wrap_in_parens) ident
   | Block (ret_type, params, body) ->
      let string_of_param (typ, name) =
-       Printf.sprintf "Type %s Name %s" typ name
+       Printf.sprintf "%s Name %s" (dump_type typ) name
      in
      Printf.sprintf "Block Return_type %s Params: %s Body: %s"
-       (match ret_type with Some t -> t | None -> "void")
+       (dump_type ret_type)
        (string_of_list string_of_param params)
        (string_of_list dump_statement body)
+  | TypeCast (typ, name) ->
+     Printf.sprintf "Cast %s as %s" name (dump_type typ)
+  | Element (expr1, expr2) ->
+     Printf.sprintf "Element %s [ %s ]"
+       (dump_expr expr1)
+       (dump_expr expr2)
+  | Func1 (ident, expr) ->
+     Printf.sprintf "Function %s ( %s )"
+       ident (dump_expr expr)
 
 and dump_binop_expr op e1 e2 =
   Printf.sprintf "(%s %s %s)"
@@ -212,35 +276,37 @@ and dump_statement = function
      "Else " ^ (dump_statement s)
   | NewVar (t, s, e) ->
      Printf.sprintf "NewVar %s %s := %s"
-       t s (dump_expr e)
-  | Mutate (s, e) ->
+       (dump_type t) s (dump_expr e)
+  | Mutate (e1, e2) ->
      Printf.sprintf "Mutate %s := %s"
-       s (dump_expr e)
-  | Comment s -> "Comment // " ^ s
+       (dump_expr e1) (dump_expr e2)
+  | Comment s -> "// " ^ s
   | Exec e -> dump_expr e
+  | Return None -> "Return"
+  | Return (Some e) -> "Return " ^ dump_expr e
 
 (* Declarations *)
 
 let dump_method_comp = function
   | Label s -> "Label " ^ s
-  | Type s -> "Type " ^ s
+  | Param_type s -> (dump_type s)
   | Identifier s -> "Identifier " ^ s
-  | Return_type s -> "Return_type " ^ s
+  | Return_type s -> "Return_type " ^ (dump_type s)
   | Body l ->
      "Body " ^ string_of_list dump_statement l
 
 let dump_method_arg (label, typ, ident) =
   Printf.sprintf
-    "Label %s Type %s Identifier %s"
-    label typ ident
+    "Label %s %s Identifier %s"
+    label (dump_type typ) ident
 
 let dump_declar = function
   | Method declar ->
      Printf.sprintf
        "Method Return_type %s Identifier %s Arguments: %s Body: %s"
-       declar.return_type
+       (dump_type declar.return_type)
        declar.ident
-       (string_of_list dump_method_arg declar.args)
+       (string_of_list dump_method_arg declar.params)
        (string_of_list (fun s -> s |> dump_statement |> wrap_in_parens) declar.body)
 
 let dump_program (Program declars) =
