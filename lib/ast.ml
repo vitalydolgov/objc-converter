@@ -16,7 +16,6 @@ type atom =
   | TypeRef of string
   | Type of typ
   | Selector of string
-  | Constant of string
   | Self
   | Null
   | Nil
@@ -48,9 +47,10 @@ type expr =
   | Property of expr * string
   (* return type, parameters with types, body *)
   | Block of typ * (typ * string) list * statement list
-  | TypeCast of typ * string
+  | TypeCast of typ * expr
   | Element of expr * expr
-  | Func1 of string * expr
+  | Func of string * expr list
+  | Array of atom list
 
 (** Statement is something that returns no result. *)
 and statement =
@@ -61,6 +61,7 @@ and statement =
   | Comment of string
   | Exec of expr
   | Return of expr option
+  | For of typ * string * expr * statement list
 
 (** Declaration that compose a program. *)
 type declar =
@@ -129,7 +130,6 @@ let make_message recv args =
   let new_labels = (label :: List.tl labels) in
   let new_args = List.combine new_labels exprs in
   Message (recv, name, new_args)
-
 
 let make_method_wo_params return_type name body =
   Method { ident = name;
@@ -218,7 +218,6 @@ let dump_atom = function
   | Null -> "NULL"
   | Nil -> "Nil"
   | Type t -> dump_type t
-  | Constant s -> "Constant " ^ s
   | Selector s -> "Selector " ^ s
 
 let rec dump_expr = function
@@ -244,15 +243,17 @@ let rec dump_expr = function
        (dump_type ret_type)
        (string_of_list string_of_param params)
        (string_of_list dump_statement body)
-  | TypeCast (typ, name) ->
-     Printf.sprintf "Cast %s as %s" name (dump_type typ)
+  | TypeCast (typ, expr) ->
+     Printf.sprintf "Cast %s as %s" (dump_expr expr) (dump_type typ)
   | Element (expr1, expr2) ->
      Printf.sprintf "Element %s [ %s ]"
        (dump_expr expr1)
        (dump_expr expr2)
-  | Func1 (ident, expr) ->
+  | Func (ident, exprs) ->
      Printf.sprintf "Function %s ( %s )"
-       ident (dump_expr expr)
+       ident (string_of_list dump_expr exprs)
+  | Array atoms ->
+     Printf.sprintf "Array %s" (string_of_list dump_atom atoms)
 
 and dump_binop_expr op e1 e2 =
   Printf.sprintf "(%s %s %s)"
@@ -284,6 +285,11 @@ and dump_statement = function
   | Exec e -> dump_expr e
   | Return None -> "Return"
   | Return (Some e) -> "Return " ^ dump_expr e
+  | For (typ, ident, expr, body) ->
+     Printf.sprintf "For %s %s IN %s %s"
+       (dump_type typ) ident
+       (dump_expr expr)
+       (string_of_list dump_statement body)
 
 (* Declarations *)
 

@@ -10,7 +10,8 @@
 %token NULL
 %token YES NO
 %token SELF NIL
-%token CLASS
+%token <string> TYPEREF
+%token <string * string> GENTYPE
 %token <string> COMMENT
 %token <string> IGNORE
 
@@ -19,6 +20,7 @@
 %token DOT
 %token COMMA
 %token CARET
+%token AT
 %token ASSIGN
 %token ASTERISK
 %token MINUS
@@ -32,6 +34,7 @@
 (* Keywords *)
 
 %token IF ELSE
+%token FOR IN
 %token RETURN
 
 (* Operators *)
@@ -45,23 +48,22 @@
 (* Raw types *)
 
 %token ID
-%token VOID
 
 (* Other *)
 
 %token <string> IDENT
 %token <string> TYPE_IDENT
-%token <string> CONSTANT
 %token <string> SELECTOR
 %token EOF
 
 %left OR
-%left AND
-%left EQU NEQ LEQ GEQ LESS GREATER
 %right NOT
+%left LESS GREATER
+%left LEQ GEQ EQU NEQ
 %left DOT
-
-%nonassoc LBRACK
+%left AND
+%right LBRACK
+%left RPAREN
 
 %type <Ast.program> program
 
@@ -85,6 +87,7 @@ method_comp:
 
 statement:
   | IF LPAREN; e = expr RPAREN LBLOCK; b = statement* RBLOCK { If (e, b) }
+  | IF LPAREN; e = expr RPAREN s = statement { If (e, [s]) }
   | ELSE IF LPAREN; e = expr RPAREN LBLOCK; b = statement* RBLOCK
     { Else (`Cond (If (e, b))) }
   | ELSE LBLOCK; b = statement* RBLOCK { Else (`NoCond b) }
@@ -94,12 +97,13 @@ statement:
   | s=COMMENT { Comment s }
   | e = expr SEMICOLON { Exec e }
   | RETURN; e = expr? SEMICOLON { Return e }
+  | FOR LPAREN; t = typ x=IDENT IN; e = expr RPAREN LBLOCK b = statement* RBLOCK { For (t, x, e, b) }
 
 typ:
   | ID { make_type "id" None }
-  | VOID { make_type "void" None }
-  | s=TYPE_IDENT LESS g=TYPE_IDENT GREATER ASTERISK { make_type s (Some g) }
-  | s=TYPE_IDENT ASTERISK { make_type s None }
+  | s=TYPE_IDENT { make_type s None }
+  | p=GENTYPE ASTERISK? { make_type (fst p) (Some (snd p)) }
+  | s=IDENT ASTERISK { make_type s None }
 
 expr:
   | LPAREN; e = expr RPAREN { Expr e }
@@ -117,10 +121,11 @@ expr:
       Block (t, l, b) }
   | e1 = expr; op = binop; e2 = expr { Binary (op, e1, e2) }
   | NOT; e = expr { Unary (Not, e) }
-  | i = endrule( e = expr; DOT s=IDENT { (e, s) }) { Property (fst i, snd i) }
+  | e = expr; DOT s=IDENT { Property (e, s) }
   | e1 = expr LBRACK; e2 = expr RBRACK { Element(e1, e2) }
-  | LPAREN; t = typ RPAREN s=IDENT { TypeCast(t, s) }
-  | s=IDENT LPAREN; e = expr RPAREN { Func1(s, e) }
+  | LPAREN; t = typ RPAREN; e = expr { TypeCast(t, e) }
+  | s=IDENT LPAREN; l = separated_list(COMMA, e = expr { e }) RPAREN { Func(s, l) }
+  | AT LBRACK l = separated_list(COMMA, a = atom { a }) RBRACK { Array l }
   | a = atom { Atom a }
 
 %inline binop:
@@ -138,9 +143,7 @@ atom:
   | i=INT { Int i }
   | f=FLOAT { Float f }
   | s=STRING { String s }
-  | s=TYPE_IDENT DOT CLASS
-  | s=TYPE_IDENT DOT SELF { TypeRef s }
-  | s=CONSTANT { Constant s }
+  | s=TYPEREF { TypeRef s }
   | s=SELECTOR { Selector s }
   | s=IDENT { Var s }
   | SELF { Self }

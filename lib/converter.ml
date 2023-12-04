@@ -1,6 +1,7 @@
 open Ast
 
 module StringSet = Set.Make (String)
+module StringMap = Map.Make (String)
 
 let legacy_types =
   [ "NSIndexPath";
@@ -11,11 +12,19 @@ let drop_prefix typ =
   let len = String.length typ - 2 in
   String.sub (StringSet.find typ legacy_types) 2 len
 
+let objc_to_swift_types =
+  let open StringMap in
+  empty
+  |> add "BOOL" "Bool"
+
 let map_type = function
-  | Simple t ->
+  | Simple objc_type ->
      begin
-       try drop_prefix t with
-       | Not_found -> t
+       try drop_prefix objc_type with
+       | Not_found ->
+          match StringMap.find_opt objc_type objc_to_swift_types with
+          | Some swift_type -> swift_type
+          | None -> objc_type
      end
   | Generic (g, t) -> Printf.sprintf "%s<%s>" g t
   | Void -> "Void"
@@ -79,6 +88,10 @@ let rec convert_statement = function
   | Exec expr -> convert_expr expr
   | Return None -> "return"
   | Return (Some expr) -> "return " ^ (convert_expr expr)
+  | For (_, ident, expr, body) ->
+     Printf.sprintf "for %s in %s {\n%s\n}"
+       ident (convert_expr expr)
+       (convert_body_indented body)
 
 and convert_expr = function
   | Expr expr -> "(" ^ convert_expr expr ^ ")"
@@ -114,14 +127,20 @@ and convert_expr = function
      Printf.sprintf "{ %s in\n%s\n}"
        (convert_block_args args)
        (convert_body_indented body)
-  | TypeCast (typ, ident) ->
-     Printf.sprintf "(%s as! %s)" ident (map_type typ)
+  | TypeCast (typ, expr) ->
+     Printf.sprintf "(%s as! %s)"
+       (convert_expr expr)
+       (map_type typ)
   | Element (expr1, expr2) ->
      Printf.sprintf "%s[%s]"
        (convert_expr expr1)
        (convert_expr expr2)
-  | Func1 (ident, expr) ->
-     Printf.sprintf "%s(%s)" ident (convert_expr expr)
+  | Func (ident, args) ->
+     Printf.sprintf "%s(%s)" ident
+       (String.concat ", "(List.map convert_expr args))
+  | Array atoms ->
+     Printf.sprintf "[%s]"
+       (String.concat ", "(List.map convert_atom atoms))
 
 and convert_binop = function
   | And -> "&&"
@@ -147,7 +166,6 @@ and convert_atom = function
   | Self -> "self"
   | Nil | Null -> "nil"
   | Type t -> map_type t
-  | Constant s -> s
   | Selector s -> "Selector(" ^ s ^ ")"
 
 and convert_body_indented body =

@@ -9,9 +9,8 @@ let upper_alpha = ['A'-'Z']
 let int = '-'? digit+
 let float = '-'? digit+ '.' digit+
 
-let constant = (upper_alpha | '_')+
-let ident = (alpha | '_') (alpha | digit | '_')*
-let type_ident = upper_alpha (alpha | digit | '_')*
+let ident = alpha (alpha | digit | '_')*
+let sel_ident = (alpha | '_') (alpha | digit | '_' | ':')*
 
 let whitespace = [' ' '\t']+
 let newline = '\n'
@@ -43,6 +42,7 @@ rule read = parse
   | "-" { MINUS }
   | "=" { ASSIGN }
   | "^" { CARET }
+  | "@" { AT }
 
   (* Logic *)
   | "&&" { AND }
@@ -65,22 +65,25 @@ rule read = parse
 
   | "self" { SELF }
   | "nil" { NIL }
-  | "class" { CLASS }
+  | (ident as s) ".class"
+  | (ident as s) ".self" { TYPEREF (s) }
+  | (ident as g) "<" (ident as s) whitespace? '*'? ">" { GENTYPE (g, s) }
 
-  | "void" { VOID }
   | "id" { ID }
+  | "void" { TYPE_IDENT ("void") }
+  | "BOOL" { TYPE_IDENT ("BOOL") }
 
   | "return" { RETURN }
 
-  | "@selector(" (ident as s) ")" { SELECTOR(s) }
+  | "@selector(" (sel_ident as s) ")" { SELECTOR(s) }
 
   (* Control flow *)
   | "if" { IF }
   | "else" { ELSE }
-
-  | constant { CONSTANT (Lexing.lexeme lexbuf) }
-  | type_ident { TYPE_IDENT (Lexing.lexeme lexbuf) }
+  | "for" { FOR }
+  | "in" { IN }
+  
   | ident { IDENT (Lexing.lexeme lexbuf) }
-
+  
   | eof { EOF }
   | _ { failwith ("Unknown character: '" ^ Lexing.lexeme lexbuf ^ "'") }
