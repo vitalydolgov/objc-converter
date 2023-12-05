@@ -16,8 +16,9 @@ let objc_to_swift_types =
   let open StringMap in
   empty
   |> add "BOOL" "Bool"
+  |> add "NSInteger" "Int"
 
-let map_type = function
+let rec map_type = function
   | Simple objc_type ->
      begin
        try drop_prefix objc_type with
@@ -26,7 +27,7 @@ let map_type = function
           | Some swift_type -> swift_type
           | None -> objc_type
      end
-  | Generic (g, t) -> Printf.sprintf "%s<%s>" g t
+  | Generic (g, t) -> Printf.sprintf "%s<%s>" (map_type g) t
   | Void -> "Void"
   | Any -> "Any"
 
@@ -88,10 +89,16 @@ let rec convert_statement = function
   | Exec expr -> convert_expr expr
   | Return None -> "return"
   | Return (Some expr) -> "return " ^ (convert_expr expr)
-  | For (_, ident, expr, body) ->
+  | ForEach (_, ident, expr, body) ->
      Printf.sprintf "for %s in %s {\n%s\n}"
        ident (convert_expr expr)
        (convert_body_indented body)
+  | For (assign, cond, incr, body) ->
+     let [@warning "-8"] NewVar (_, ident, init) = assign in
+     Printf.sprintf "var %s = %s\nwhile %s {\n%s\n}"
+       ident (convert_expr init)
+       (convert_expr cond)
+       (convert_body_indented (body @ [Exec incr]))
 
 and convert_expr = function
   | Expr expr -> "(" ^ convert_expr expr ^ ")"
@@ -151,6 +158,8 @@ and convert_binop = function
   | Greater -> ">"
   | LessEqual -> "<="
   | GreaterEqual -> ">="
+  | Plus -> "+"
+  | Minus -> "-"
 
 and convert_unary = function
   | Not -> "!"

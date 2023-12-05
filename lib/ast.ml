@@ -1,6 +1,6 @@
 type typ =
   | Simple of string
-  | Generic of string * string
+  | Generic of typ * string
   | Void
   | Any
 
@@ -30,6 +30,8 @@ type binop =
   | Greater
   | LessEqual
   | GreaterEqual
+  | Plus
+  | Minus
 [@@deriving show { with_path = false }]
 
 (** Unary operator. *)
@@ -61,7 +63,8 @@ and statement =
   | Comment of string
   | Exec of expr
   | Return of expr option
-  | For of typ * string * expr * statement list
+  | ForEach of typ * string * expr * statement list
+  | For of statement * expr * expr * statement list
 
 (** Declaration that compose a program. *)
 type declar =
@@ -77,7 +80,7 @@ type program = Program of declar list
 
 type method_comp =
   | Label of string
-  | Param_type of typ
+  | Param of typ * string
   | Identifier of string
   | Return_type of typ
   | Body of statement list
@@ -137,7 +140,7 @@ let make_method_wo_params return_type name body =
            return_type = return_type;
            body = body }
 
-let make_method_w_params return_type labels types identifiers body =
+let make_method_w_params return_type labels params body =
   let name, label =
     let ident = List.hd labels in
     match split_name_label ident with
@@ -147,7 +150,8 @@ let make_method_w_params return_type labels types identifiers body =
   let args =
     List.mapi
       (fun i label ->
-        (label, List.nth types i, List.nth identifiers i))
+        let (typ, ident) = List.nth params i in
+        (label, typ, ident))
       (label :: List.tl labels)
   in
   Method { ident = name;
@@ -161,9 +165,9 @@ let make_method comps body =
     List.filter (function Label _ -> true | _ -> false) comps
     |> List.map (function Label s -> s | _ -> assert false)
   in
-  let types =
-    List.filter (function Param_type _ -> true | _ -> false) comps
-    |> List.map (function Param_type t -> t | _ -> assert false)
+  let params =
+    List.filter (function Param _ -> true | _ -> false) comps
+    |> List.map (function Param (t, s) -> (t, s) | _ -> assert false)
   in
   let identifiers =
     List.filter (function Identifier _ -> true | _ -> false) comps
@@ -178,14 +182,15 @@ let make_method comps body =
   if labels = [] then
     make_method_wo_params return_type (List.hd identifiers) body
   else
-    make_method_w_params return_type labels types identifiers body
+    make_method_w_params return_type labels params body
 
-let make_type t = function
-  | Some s -> Generic (t, s)
-  | None -> match t with
-            | "void" -> Void
-            | "id" -> Any
-            | _ -> Simple t
+let make_type = function
+  | "void" -> Void
+  | "id" -> Any
+  | t -> Simple t
+
+let make_generic_type g t =
+  Generic ((make_type g), t)
 
 (* Debug *)
 
@@ -198,9 +203,9 @@ let wrap_in_parens str =
   else
     str
 
-let dump_type = function
+let rec dump_type = function
   | Generic (t, s) ->
-     Printf.sprintf "GenericType %s<%s>" t s
+     Printf.sprintf "GenericType %s<%s>" (dump_type t) s
   | Simple t -> "Type " ^ t
   | Void -> "Void"
   | Any -> "Any"
@@ -285,17 +290,23 @@ and dump_statement = function
   | Exec e -> dump_expr e
   | Return None -> "Return"
   | Return (Some e) -> "Return " ^ dump_expr e
-  | For (typ, ident, expr, body) ->
-     Printf.sprintf "For %s %s IN %s %s"
+  | ForEach (typ, ident, expr, body) ->
+     Printf.sprintf "ForEach %s %s IN %s %s"
        (dump_type typ) ident
        (dump_expr expr)
+       (string_of_list dump_statement body)
+  | For (assign, cond, inc, body) ->
+     Printf.sprintf "For %s ?: %s %s %s"
+       (dump_statement assign)
+       (dump_expr cond)
+       (dump_expr inc)
        (string_of_list dump_statement body)
 
 (* Declarations *)
 
 let dump_method_comp = function
   | Label s -> "Label " ^ s
-  | Param_type s -> (dump_type s)
+  | Param (t, s) -> (dump_type t) ^ " " ^ s
   | Identifier s -> "Identifier " ^ s
   | Return_type s -> "Return_type " ^ (dump_type s)
   | Body l ->

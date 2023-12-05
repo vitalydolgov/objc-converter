@@ -4,7 +4,6 @@
 
 let digit = ['0'-'9']
 let alpha = ['a'-'z' 'A'-'Z']
-let upper_alpha = ['A'-'Z']
 
 let int = '-'? digit+
 let float = '-'? digit+ '.' digit+
@@ -25,6 +24,8 @@ rule read = parse
   | newline { Lexing.new_line lexbuf; read lexbuf }
   | comment { COMMENT (com) }
 
+  | "_Nonnull" { read lexbuf }
+
   | ignore { IGNORE (str) }
   | int { INT (Lexing.lexeme lexbuf |> int_of_string) }
   | float { FLOAT (Lexing.lexeme lexbuf |> float_of_string) }
@@ -38,8 +39,6 @@ rule read = parse
   | ";" { SEMICOLON }
   | "." { DOT }
   | "," { COMMA }
-  | "*" { ASTERISK }
-  | "-" { MINUS }
   | "=" { ASSIGN }
   | "^" { CARET }
   | "@" { AT }
@@ -55,6 +54,10 @@ rule read = parse
   | "<=" { LEQ }
   | ">=" { GEQ }
 
+  | "-" { MINUS }
+  | "+" { PLUS }
+  | "*" { ASTERISK }
+
   (* Parentheses *)
   | "(" { LPAREN }
   | ")" { RPAREN }
@@ -63,15 +66,12 @@ rule read = parse
   | "[" { LBRACK }
   | "]" { RBRACK }
 
+  | "id" { ID }
   | "self" { SELF }
   | "nil" { NIL }
   | (ident as s) ".class"
   | (ident as s) ".self" { TYPEREF (s) }
   | (ident as g) "<" (ident as s) whitespace? '*'? ">" { GENTYPE (g, s) }
-
-  | "id" { ID }
-  | "void" { TYPE_IDENT ("void") }
-  | "BOOL" { TYPE_IDENT ("BOOL") }
 
   | "return" { RETURN }
 
@@ -82,7 +82,7 @@ rule read = parse
   | "else" { ELSE }
   | "for" { FOR }
   | "in" { IN }
-  
+
   | ident { IDENT (Lexing.lexeme lexbuf) }
   
   | eof { EOF }

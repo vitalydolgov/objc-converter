@@ -24,6 +24,7 @@
 %token ASSIGN
 %token ASTERISK
 %token MINUS
+%token PLUS
 
 (* Parentheses *)
 
@@ -52,10 +53,10 @@
 (* Other *)
 
 %token <string> IDENT
-%token <string> TYPE_IDENT
 %token <string> SELECTOR
 %token EOF
 
+%left PLUS MINUS
 %left OR
 %right NOT
 %left LESS GREATER
@@ -63,9 +64,11 @@
 %left DOT
 %left AND
 %right LBRACK
-%left RPAREN
+%right RPAREN
 
 %type <Ast.program> program
+%type <Ast.statement> assign
+%type <Ast.typ> reftype
 
 %start program
 
@@ -81,7 +84,7 @@ declar:
 
 method_comp:
   | MINUS LPAREN t = typ RPAREN { Return_type t }
-  | LPAREN; t = typ RPAREN { Param_type t }
+  | LPAREN; t = typ RPAREN s = IDENT { Param (t, s) }
   | s=IDENT COLON { Label s }
   | s=IDENT { Identifier s }
 
@@ -97,13 +100,22 @@ statement:
   | s=COMMENT { Comment s }
   | e = expr SEMICOLON { Exec e }
   | RETURN; e = expr? SEMICOLON { Return e }
-  | FOR LPAREN; t = typ x=IDENT IN; e = expr RPAREN LBLOCK b = statement* RBLOCK { For (t, x, e, b) }
+  | FOR LPAREN; t = typ x=IDENT IN; e = expr RPAREN LBLOCK b = statement* RBLOCK
+    { ForEach (t, x, e, b) }
+  | FOR LPAREN; s = assign SEMICOLON e1 = expr; SEMICOLON e2 = expr RPAREN LBLOCK b = statement* RBLOCK
+    { For (s, e1, e2, b) }
+
+assign:
+  | t = typ s=IDENT ASSIGN e = expr { NewVar (t, s, e) }
 
 typ:
-  | ID { make_type "id" None }
-  | s=TYPE_IDENT { make_type s None }
-  | p=GENTYPE ASTERISK? { make_type (fst p) (Some (snd p)) }
-  | s=IDENT ASTERISK { make_type s None }
+  | t = reftype { t }
+  | s=IDENT { make_type s }
+
+reftype:
+  | ID { make_type "id" }
+  | s=IDENT ASTERISK { make_type s }
+  | p=GENTYPE ASTERISK { make_generic_type (fst p) (snd p) }
 
 expr:
   | LPAREN; e = expr RPAREN { Expr e }
@@ -123,10 +135,10 @@ expr:
   | NOT; e = expr { Unary (Not, e) }
   | e = expr; DOT s=IDENT { Property (e, s) }
   | e1 = expr LBRACK; e2 = expr RBRACK { Element(e1, e2) }
-  | LPAREN; t = typ RPAREN; e = expr { TypeCast(t, e) }
   | s=IDENT LPAREN; l = separated_list(COMMA, e = expr { e }) RPAREN { Func(s, l) }
   | AT LBRACK l = separated_list(COMMA, a = atom { a }) RBRACK { Array l }
   | a = atom { Atom a }
+  | LPAREN; t = reftype RPAREN; e = expr { TypeCast(t, e) }
 
 %inline binop:
   | EQU { Equal }
@@ -137,6 +149,8 @@ expr:
   | GEQ { GreaterEqual }
   | AND { And }
   | OR { Or }
+  | PLUS { Plus }
+  | MINUS { Minus }
 
 atom:
   | s=IGNORE { Ignore s }
