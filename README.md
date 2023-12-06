@@ -2,20 +2,20 @@
 
 **WIP**, but you can receive some benefit from it, even if it's far from being complete.
 
-The primary target of the project is to convert only methods, so you can partially migrate Objective-C code to extensions in Swift, and using bridge publish them back to Objective-C runtime. With this approach so you can start and stop refactoring at any time.
+The primary target of the project is to convert methods, so you can partially migrate Objective-C code to extensions in Swift, and with bridge publish them back to Objective-C runtime. With this approach it's possible to start and stop refactoring at any time.
 
 ## Example
 
 A method like the following will be converted to corresponding Swift version.
 
 ```
-- (NSString *)makeStringFromNumber:(NSNumber *)number {
+- (NSArray<NSString *> *)getDigitsOfNumber:(NSInteger)value {
     // code
 }
 
-↓↓
+ ↓↓
 
-@objc public func makeString(fromNumber number: NSNumber) -> String {
+@objc public func getDigits(ofNumber value: Int) -> [String] {
     // code
 }
 ```
@@ -27,7 +27,7 @@ If the parser wasn't able to understand something, you can comment that line to 
 ```
 MYClass *obj = [#unsupported expression# createNewObject];
 
-↓↓
+ ↓↓
 
 let obj = #unsupported expression#.createNewObject()
 ```
