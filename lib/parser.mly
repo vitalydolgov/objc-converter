@@ -21,6 +21,7 @@
 %token COMMA
 %token CARET
 %token AT
+%token QUESTION
 %token ASTERISK
 %token MINUS
 %token PLUS
@@ -65,6 +66,7 @@
 %left LEQ GEQ EQU NEQ
 %left DOT
 %left AND
+%left QUESTION COLON
 %right LBRACK
 %right RPAREN
 
@@ -139,10 +141,11 @@ expr:
   | e = expr; DOT s=IDENT { Property (e, s) }
   | e1 = expr LBRACK; e2 = expr RBRACK { Element(e1, e2) }
   | s=IDENT LPAREN; l = separated_list(COMMA, e = expr { e }) RPAREN { Func(s, l) }
-  | AT LBRACK l = separated_list(COMMA, a = atom { a }) RBRACK { Array l }
+  | AT LBRACK l = separated_list(COMMA, a = atom { a }) RBRACK { ArrayValues l }
   | a = atom { Atom a }
   | LPAREN; t = reftype RPAREN; e = expr { TypeCast(t, e) }
   | e1 = expr; o = assignop; e2 = expr { Mutate (e1, o, e2) }
+  | c = expr QUESTION; e1 = expr COLON; e2 = expr { Ternary (c, e1, e2) }
 
 %inline binop:
   | EQU { Equal }
@@ -155,6 +158,7 @@ expr:
   | OR { Or }
   | PLUS { Plus }
   | MINUS { Minus }
+  | QUESTION COLON { Default }
 
 %inline assignop:
   | ASSIGN { Regular }
@@ -169,7 +173,7 @@ atom:
   | s=TYPEREF { TypeRef s }
   | s=SELECTOR { Selector s }
   | s=IDENT { Var s }
-  | SELF { Self }
+  | SELF DOT s=IDENT { Prop s }
   | NULL { Null }
   | NIL { Nil }
   | YES { Bool true }

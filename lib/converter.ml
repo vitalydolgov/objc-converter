@@ -27,9 +27,10 @@ let rec map_type = function
           | Some swift_type -> swift_type
           | None -> objc_type
      end
-  | Generic (g, t) -> Printf.sprintf "%s<%s>" (map_type g) t
+  | Generic (g, t) -> Printf.sprintf "%s<%s>" (map_type g) (map_type t)
   | Void -> "Void"
   | Any -> "Any"
+  | Array t -> Printf.sprintf "[%s]" (map_type t)
 
 let indent_region str =
   String.split_on_char '\n' str
@@ -133,13 +134,18 @@ and convert_expr = function
   | Func (ident, args) ->
      Printf.sprintf "%s(%s)" ident
        (String.concat ", "(List.map convert_expr args))
-  | Array atoms ->
+  | ArrayValues atoms ->
      Printf.sprintf "[%s]"
        (String.concat ", "(List.map convert_atom atoms))
   | Mutate (expr1, assign, expr2) ->
      Printf.sprintf "%s %s %s"
        (convert_expr expr1)
        (convert_assign assign)
+       (convert_expr expr2)
+  | Ternary (cond, expr1, expr2) ->
+     Printf.sprintf "%s ? %s : %s"
+       (convert_expr cond)
+       (convert_expr expr1)
        (convert_expr expr2)
 
 and convert_message mesg = match [@warning "-8"] mesg with
@@ -174,6 +180,7 @@ and convert_binop = function
   | GreaterEqual -> ">="
   | Plus -> "+"
   | Minus -> "-"
+  | Default -> "??"
 
 and convert_atom = function
   | Ignore s -> "#" ^ s ^ "#"
@@ -189,7 +196,11 @@ and convert_atom = function
   | Selector s -> "Selector(" ^ s ^ ")"
 
 and convert_body_indented body =
-  List.map convert_statement body |> String.concat "\n" |> indent_region
+  let body' = match body with
+    | [Return (Some expr)] -> [Exec expr]
+    | _ -> body
+  in
+  List.map convert_statement body' |> String.concat "\n" |> indent_region
 
 let convert_return_type typ =
   if typ = Void then ""

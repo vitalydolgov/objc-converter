@@ -43,6 +43,7 @@ rule read = parse
   | "," { COMMA }
   | "^" { CARET }
   | "@" { AT }
+  | "?" { QUESTION }
 
   (* Logic *)
   | "&&" { AND }

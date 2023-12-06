@@ -1,8 +1,9 @@
 type typ =
   | Simple of string
-  | Generic of typ * string
+  | Generic of typ * typ
   | Void
   | Any
+  | Array of typ
 
 (** Basic component of an expression. *)
 type atom =
@@ -32,6 +33,7 @@ type binop =
   | GreaterEqual
   | Plus
   | Minus
+  | Default
 [@@deriving show { with_path = false }]
 
 (** Unary operator. *)
@@ -39,6 +41,7 @@ type unary =
   | Not
 [@@deriving show { with_path = false }]
 
+(** Assignment operators. *)
 type assignop =
   | Regular
   | Incr
@@ -58,8 +61,9 @@ type expr =
   | TypeCast of typ * expr
   | Element of expr * expr
   | Func of string * expr list
-  | Array of atom list
+  | ArrayValues of atom list
   | Mutate of expr * assignop * expr
+  | Ternary of expr * expr * expr
 
 (** Statement is something that returns no result. *)
 and statement =
@@ -92,7 +96,7 @@ type method_comp =
   | Body of statement list
 
 let find_last_preposition ident =
-  let prepositions = ["For"; "With"; "From"; "In"; "At"] in
+  let prepositions = ["For"; "With"; "From"; "In"; "At"; "Of"] in
   let max_index = String.length ident - 1 in
   let inner prep =
     let rex =
@@ -196,7 +200,9 @@ let make_type = function
   | t -> Simple t
 
 let make_generic_type g t =
-  Generic ((make_type g), t)
+  match g with
+  | "NSArray" | "NSMutableArray" -> Array (make_type t)
+  | _ -> Generic ((make_type g), (make_type t))
 
 (* Debug *)
 
@@ -210,11 +216,12 @@ let wrap_in_parens str =
     str
 
 let rec dump_type = function
-  | Generic (t, s) ->
-     Printf.sprintf "GenericType %s<%s>" (dump_type t) s
+  | Generic (g, t) ->
+     Printf.sprintf "GenericType %s<%s>" (dump_type g) (dump_type t)
   | Simple t -> "Type " ^ t
   | Void -> "Void"
   | Any -> "Any"
+  | Array t -> "Array " ^ (dump_type t)
 
 let dump_atom = function
   | Ignore s -> "# " ^ s ^ " #"
@@ -263,11 +270,16 @@ let rec dump_expr = function
   | Func (ident, exprs) ->
      Printf.sprintf "Function %s ( %s )"
        ident (string_of_list dump_expr exprs)
-  | Array atoms ->
+  | ArrayValues atoms ->
      Printf.sprintf "Array %s" (string_of_list dump_atom atoms)
   | Mutate (e1, op, e2) ->
      Printf.sprintf "Mutate %s %s %s"
        (dump_expr e1) (show_assignop op) (dump_expr e2)
+  | Ternary (cond, expr1, expr2) ->
+     Printf.sprintf "Ternary %s ? %s : %s"
+       (dump_expr cond)
+       (dump_expr expr1)
+       (dump_expr expr2)
 
 and dump_binop_expr op e1 e2 =
   Printf.sprintf "(%s %s %s)"
