@@ -49,23 +49,28 @@ let convert_params args =
     String.concat " " [label; converted_args]
 
 let convert_invoc_args to_string args =
-  if args = [] then ""
-  else
-    let (label, _) = List.hd args in
-    let converted_args =
-      args
-      |> List.map (fun pair -> snd pair |> to_string)
-      |> String.concat ", "
+  let converted_args =
+    let inner (label, value) =
+      let value = (value |> to_string) in
+      match label with
+      | "_" -> value
+      | _ -> label ^ ": " ^ value
     in
-    if label = "_" then
-      Printf.sprintf "%s" converted_args
-    else
-      Printf.sprintf "%s: %s" label converted_args
+    args
+    |> List.map inner
+    |> String.concat ", "
+  in
+  Printf.sprintf "%s" converted_args
 
 let convert_block_args args = match args with
   | [] -> ""
   | [(_, name)] -> name
   | l -> "(" ^ (List.map snd l |> String.concat ", ") ^ ")"
+
+let convert_assign = function
+  | Regular -> "="
+  | Incr -> "+="
+  | Decr -> "-="
 
 let rec convert_statement = function
   | If (expr, body) ->
@@ -81,10 +86,6 @@ let rec convert_statement = function
   | NewVar (_, name, expr) ->
      Printf.sprintf "let %s = %s"
        name (convert_expr expr)
-  | Mutate (expr1, expr2) ->
-     Printf.sprintf "%s = %s"
-       (convert_expr expr1)
-       (convert_expr expr2)
   | Comment comm -> "// " ^ comm
   | Exec expr -> convert_expr expr
   | Return None -> "return"
@@ -107,24 +108,11 @@ and convert_expr = function
        (convert_expr expr1)
        (convert_binop op)
        (convert_expr expr2)
-  | Unary (op, expr) ->
-     Printf.sprintf "%s%s"
-       (convert_unary op)
+  | Unary (Not, expr) ->
+     Printf.sprintf "!%s"
        (convert_expr expr)
   | Atom atom -> convert_atom atom
-  | Message (Atom Self, ident, args) ->
-     Printf.sprintf "%s(%s)"
-       ident (convert_invoc_args (convert_expr) args)
-  | Message (expr, "alloc", []) ->
-     Printf.sprintf "%s" (convert_expr expr)
-  | Message (expr1, "isEqualToString", [("_", expr2)]) ->
-     Printf.sprintf "%s == %s"
-       (convert_expr expr1)
-       (convert_expr expr2)
-  | Message (expr, ident, args) ->
-     Printf.sprintf "%s.%s(%s)"
-       (convert_expr expr) ident
-       (convert_invoc_args (convert_expr) args)
+  | Message _ as m -> convert_message m
   | Property (Atom Self, ident) -> ident
   | Property (expr, ident) ->
      Printf.sprintf "%s.%s" (convert_expr expr) ident
@@ -148,6 +136,32 @@ and convert_expr = function
   | Array atoms ->
      Printf.sprintf "[%s]"
        (String.concat ", "(List.map convert_atom atoms))
+  | Mutate (expr1, assign, expr2) ->
+     Printf.sprintf "%s %s %s"
+       (convert_expr expr1)
+       (convert_assign assign)
+       (convert_expr expr2)
+
+and convert_message mesg = match [@warning "-8"] mesg with
+  | Message (Atom Self, ident, args) ->
+     Printf.sprintf "%s(%s)"
+       ident (convert_invoc_args (convert_expr) args)
+  | Message (expr, "alloc", []) ->
+     Printf.sprintf "%s" (convert_expr expr)
+  | Message (expr, "new", []) ->
+     Printf.sprintf "%s()" (convert_expr expr)
+  | Message (expr, "init", args) ->
+     Printf.sprintf "%s(%s)"
+       (convert_expr expr)
+       (convert_invoc_args (convert_expr) args)
+  | Message (expr1, "isEqualToString", [("_", expr2)]) ->
+     Printf.sprintf "%s == %s"
+       (convert_expr expr1)
+       (convert_expr expr2)
+  | Message (expr, ident, args) ->
+     Printf.sprintf "%s.%s(%s)"
+       (convert_expr expr) ident
+       (convert_invoc_args (convert_expr) args)
 
 and convert_binop = function
   | And -> "&&"
@@ -160,9 +174,6 @@ and convert_binop = function
   | GreaterEqual -> ">="
   | Plus -> "+"
   | Minus -> "-"
-
-and convert_unary = function
-  | Not -> "!"
 
 and convert_atom = function
   | Ignore s -> "#" ^ s ^ "#"

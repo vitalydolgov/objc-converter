@@ -39,6 +39,12 @@ type unary =
   | Not
 [@@deriving show { with_path = false }]
 
+type assignop =
+  | Regular
+  | Incr
+  | Decr
+[@@deriving show { with_path = false }]
+
 (** Expression is something that returns a result. *)
 type expr =
   | Expr of expr
@@ -53,13 +59,13 @@ type expr =
   | Element of expr * expr
   | Func of string * expr list
   | Array of atom list
+  | Mutate of expr * assignop * expr
 
 (** Statement is something that returns no result. *)
 and statement =
   | If of expr * statement list
   | Else of [`NoCond of statement list | `Cond of statement]
   | NewVar of typ * string * expr
-  | Mutate of expr * expr
   | Comment of string
   | Exec of expr
   | Return of expr option
@@ -259,6 +265,9 @@ let rec dump_expr = function
        ident (string_of_list dump_expr exprs)
   | Array atoms ->
      Printf.sprintf "Array %s" (string_of_list dump_atom atoms)
+  | Mutate (e1, op, e2) ->
+     Printf.sprintf "Mutate %s %s %s"
+       (dump_expr e1) (show_assignop op) (dump_expr e2)
 
 and dump_binop_expr op e1 e2 =
   Printf.sprintf "(%s %s %s)"
@@ -283,9 +292,6 @@ and dump_statement = function
   | NewVar (t, s, e) ->
      Printf.sprintf "NewVar %s %s := %s"
        (dump_type t) s (dump_expr e)
-  | Mutate (e1, e2) ->
-     Printf.sprintf "Mutate %s := %s"
-       (dump_expr e1) (dump_expr e2)
   | Comment s -> "// " ^ s
   | Exec e -> dump_expr e
   | Return None -> "Return"

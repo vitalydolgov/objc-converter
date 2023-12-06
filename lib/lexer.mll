@@ -35,11 +35,12 @@ rule read = parse
   | "NO" { NO }
   | "YES" { YES }
 
+  | "=" { ASSIGN }
+
   | ":" { COLON }
   | ";" { SEMICOLON }
   | "." { DOT }
   | "," { COMMA }
-  | "=" { ASSIGN }
   | "^" { CARET }
   | "@" { AT }
 

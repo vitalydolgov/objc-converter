@@ -21,10 +21,11 @@
 %token COMMA
 %token CARET
 %token AT
-%token ASSIGN
 %token ASTERISK
 %token MINUS
 %token PLUS
+
+%token ASSIGN
 
 (* Parentheses *)
 
@@ -56,6 +57,7 @@
 %token <string> SELECTOR
 %token EOF
 
+%left ASSIGN
 %left PLUS MINUS
 %left OR
 %right NOT
@@ -96,7 +98,6 @@ statement:
   | ELSE LBLOCK; b = statement* RBLOCK { Else (`NoCond b) }
   | t = typ s=IDENT SEMICOLON { NewVar (t, s, Atom Null) }
   | t = typ s=IDENT ASSIGN e = expr SEMICOLON { NewVar (t, s, e) }
-  | e1 = expr ASSIGN; e2 = expr SEMICOLON { Mutate (e1, e2) }
   | s=COMMENT { Comment s }
   | e = expr SEMICOLON { Exec e }
   | RETURN; e = expr? SEMICOLON { Return e }
@@ -133,12 +134,15 @@ expr:
       Block (t, l, b) }
   | e1 = expr; op = binop; e2 = expr { Binary (op, e1, e2) }
   | NOT; e = expr { Unary (Not, e) }
+  | e = expr PLUS PLUS { Mutate (e, Incr, Atom (Int 1)) }
+  | e = expr MINUS MINUS { Mutate (e, Decr, Atom (Int 1)) }
   | e = expr; DOT s=IDENT { Property (e, s) }
   | e1 = expr LBRACK; e2 = expr RBRACK { Element(e1, e2) }
   | s=IDENT LPAREN; l = separated_list(COMMA, e = expr { e }) RPAREN { Func(s, l) }
   | AT LBRACK l = separated_list(COMMA, a = atom { a }) RBRACK { Array l }
   | a = atom { Atom a }
   | LPAREN; t = reftype RPAREN; e = expr { TypeCast(t, e) }
+  | e1 = expr; o = assignop; e2 = expr { Mutate (e1, o, e2) }
 
 %inline binop:
   | EQU { Equal }
@@ -151,6 +155,11 @@ expr:
   | OR { Or }
   | PLUS { Plus }
   | MINUS { Minus }
+
+%inline assignop:
+  | ASSIGN { Regular }
+  | PLUS ASSIGN { Incr }
+  | MINUS ASSIGN { Decr }
 
 atom:
   | s=IGNORE { Ignore s }
