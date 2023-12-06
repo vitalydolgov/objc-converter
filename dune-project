@@ -8,4 +8,5 @@
 (package
  (name objc-converter)
  (depends
-  (menhir (>= 2.0))))
+  (menhir (>= 2.0))
+  ppx_deriving))
