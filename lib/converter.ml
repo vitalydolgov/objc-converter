@@ -5,7 +5,8 @@ module StringMap = Map.Make (String)
 
 let legacy_types =
   [ "NSIndexPath";
-    "NSString" ]
+    "NSString";
+    "NSDateFormatter" ]
   |> StringSet.of_list
 
 let drop_prefix typ =
@@ -30,7 +31,12 @@ let rec map_type = function
   | Generic (g, t) -> Printf.sprintf "%s<%s>" (map_type g) (map_type t)
   | Void -> "Void"
   | Any -> "Any"
+  | Instance -> "???"
   | Array t -> Printf.sprintf "[%s]" (map_type t)
+  | Optional (Protocoled (t, p)) ->
+     Printf.sprintf "(%s)?" (map_type (Protocoled (t, p)))
+  | Optional t -> (map_type t) ^ "?"
+  | Protocoled (t, p) -> (map_type t) ^ " & " ^ p
 
 let indent_region str =
   String.split_on_char '\n' str
@@ -101,6 +107,14 @@ let rec convert_statement = function
        ident (convert_expr init)
        (convert_expr cond)
        (convert_body_indented (body @ [Exec incr]))
+  | While (cond, body) ->
+     Printf.sprintf "while %s {\n%s\n}"
+       (convert_expr cond)
+       (convert_body_indented body)
+  | Repeat (body, cond) ->
+     Printf.sprintf "repeat {\n%s\n} while %s"
+       (convert_body_indented body)
+       (convert_expr cond)
 
 and convert_expr = function
   | Expr expr -> "(" ^ convert_expr expr ^ ")"
@@ -160,10 +174,6 @@ and convert_message mesg = match [@warning "-8"] mesg with
      Printf.sprintf "%s(%s)"
        (convert_expr expr)
        (convert_invoc_args (convert_expr) args)
-  | Message (expr1, "isEqualToString", [("_", expr2)]) ->
-     Printf.sprintf "%s == %s"
-       (convert_expr expr1)
-       (convert_expr expr2)
   | Message (expr, ident, args) ->
      Printf.sprintf "%s.%s(%s)"
        (convert_expr expr) ident
@@ -183,7 +193,7 @@ and convert_binop = function
   | Default -> "??"
 
 and convert_atom = function
-  | Ignore s -> "#" ^ s ^ "#"
+  | Ignore s -> "~ignored: " ^ s ^ "~"
   | Int i -> string_of_int i
   | Float f -> string_of_float f
   | Bool b -> string_of_bool b
@@ -196,23 +206,25 @@ and convert_atom = function
   | Selector s -> "Selector(" ^ s ^ ")"
 
 and convert_body_indented body =
-  let body' = match body with
-    | [Return (Some expr)] -> [Exec expr]
-    | _ -> body
-  in
-  List.map convert_statement body' |> String.concat "\n" |> indent_region
+  List.map convert_statement body |> String.concat "\n" |> indent_region
 
 let convert_return_type typ =
-  if typ = Void then ""
+  if typ = Void || typ = Instance then ""
   else " -> " ^ map_type typ
 
 let convert_declar = function
   | Method { ident; params; return_type; body } ->
-     Printf.sprintf "@objc public func %s(%s)%s {\n%s\n}"
-       ident
-       (convert_params params)
-       (convert_return_type return_type)
-       (convert_body_indented body)
+    let body' = match body with
+      | [Return (Some expr)] -> [Exec expr]
+      | _ -> body
+    in
+    Printf.sprintf "@objc public func %s(%s)%s {\n%s\n}"
+      ident
+      (convert_params params)
+      (convert_return_type return_type)
+      (convert_body_indented body')
+  | Comment (Mark str) -> "// MARK: " ^ str
+  | Comment (LineComment str) -> "// " ^ str
 
 let process (Program program) =
   let declars = List.map convert_declar program in

@@ -11,8 +11,12 @@
 %token YES NO
 %token SELF NIL
 %token <string> TYPEREF
+
 %token <string * string> GENTYPE
+%token <string * string> TYPEPROTO
+
 %token <string> COMMENT
+%token <string> MARK
 %token <string> IGNORE
 
 %token COLON
@@ -22,11 +26,14 @@
 %token CARET
 %token AT
 %token QUESTION
+%token UNDERSCORE
 %token ASTERISK
 %token MINUS
 %token PLUS
 
 %token ASSIGN
+
+%token NONNULL NULLABLE
 
 (* Parentheses *)
 
@@ -38,6 +45,7 @@
 
 %token IF ELSE
 %token FOR IN
+%token WHILE DO
 %token RETURN
 
 (* Operators *)
@@ -64,6 +72,7 @@
 %right NOT
 %left LESS GREATER
 %left LEQ GEQ EQU NEQ
+%left SELF
 %left DOT
 %left AND
 %left QUESTION COLON
@@ -82,7 +91,12 @@ program:
   | declar* EOF { Program $1 }
 ;
 
+comment:
+  | s=MARK { Mark s }
+  | s=COMMENT { LineComment s }
+
 declar:
+  | c = comment { Comment (c) }
   | m = method_comp* LBLOCK; b = statement* RBLOCK
     { make_method m b }
 
@@ -103,10 +117,15 @@ statement:
   | s=COMMENT { Comment s }
   | e = expr SEMICOLON { Exec e }
   | RETURN; e = expr? SEMICOLON { Return e }
+  | l = loop { l }
+
+loop:
   | FOR LPAREN; t = typ x=IDENT IN; e = expr RPAREN LBLOCK b = statement* RBLOCK
     { ForEach (t, x, e, b) }
   | FOR LPAREN; s = assign SEMICOLON e1 = expr; SEMICOLON e2 = expr RPAREN LBLOCK b = statement* RBLOCK
     { For (s, e1, e2, b) }
+  | WHILE LPAREN; e = expr RPAREN LBLOCK b = statement* RBLOCK { While (e, b) }
+  | DO LBLOCK b = statement* RBLOCK WHILE LPAREN; e = expr RPAREN SEMICOLON { Repeat (b, e) }
 
 assign:
   | t = typ s=IDENT ASSIGN e = expr { NewVar (t, s, e) }
@@ -117,8 +136,15 @@ typ:
 
 reftype:
   | ID { make_type "id" }
-  | s=IDENT ASTERISK { make_type s }
-  | p=GENTYPE ASTERISK { make_generic_type (fst p) (snd p) }
+  | s=IDENT ASTERISK NONNULL { make_type s }
+  | s=IDENT ASTERISK NULLABLE
+  | s=IDENT ASTERISK { Optional (make_type s) }
+  | p=GENTYPE ASTERISK NONNULL { make_generic_type (fst p) (snd p) }
+  | p=GENTYPE ASTERISK NULLABLE
+  | p=GENTYPE ASTERISK { Optional (make_generic_type (fst p) (snd p)) }
+  | p=TYPEPROTO ASTERISK NONNULL { make_protocol_type (fst p) (snd p) }
+  | p=TYPEPROTO ASTERISK NULLABLE
+  | p=TYPEPROTO ASTERISK { Optional (make_protocol_type (fst p) (snd p)) }
 
 expr:
   | LPAREN; e = expr RPAREN { Expr e }
@@ -143,7 +169,10 @@ expr:
   | s=IDENT LPAREN; l = separated_list(COMMA, e = expr { e }) RPAREN { Func(s, l) }
   | AT LBRACK l = separated_list(COMMA, a = atom { a }) RBRACK { ArrayValues l }
   | a = atom { Atom a }
-  | LPAREN; t = reftype RPAREN; e = expr { TypeCast(t, e) }
+  | LPAREN; t = reftype RPAREN; e = expr
+    { match t with
+      | Optional t' -> TypeCast(t', e)
+      | _ -> TypeCast(t, e) }
   | e1 = expr; o = assignop; e2 = expr { Mutate (e1, o, e2) }
   | c = expr QUESTION; e1 = expr COLON; e2 = expr { Ternary (c, e1, e2) }
 
@@ -173,7 +202,9 @@ atom:
   | s=TYPEREF { TypeRef s }
   | s=SELECTOR { Selector s }
   | s=IDENT { Var s }
+  | UNDERSCORE s=IDENT
   | SELF DOT s=IDENT { Prop s }
+  | SELF { Self }
   | NULL { Null }
   | NIL { Nil }
   | YES { Bool true }

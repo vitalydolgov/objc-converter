@@ -3,7 +3,10 @@ type typ =
   | Generic of typ * typ
   | Void
   | Any
+  | Instance
   | Array of typ
+  | Optional of typ
+  | Protocoled of typ * string
 
 (** Basic component of an expression. *)
 type atom =
@@ -75,6 +78,12 @@ and statement =
   | Return of expr option
   | ForEach of typ * string * expr * statement list
   | For of statement * expr * expr * statement list
+  | While of expr * statement list
+  | Repeat of statement list * expr
+
+type comment =
+  | Mark of string
+  | LineComment of string
 
 (** Declaration that compose a program. *)
 type declar =
@@ -83,6 +92,7 @@ type declar =
                 params : (string * typ * string) list;
                 return_type : typ;
                 body : statement list }
+  | Comment of comment
 
 type program = Program of declar list
 
@@ -126,7 +136,18 @@ let split_name_label ident =
       try
         let _ = Str.search_forward rex ident 0 in
         let name = Str.matched_group 1 ident in
-        let label = Str.matched_group 2 ident |> String.uncapitalize_ascii in
+        let label =
+          begin
+            let text = Str.matched_group 2 ident in
+            try
+              let rex = Str.regexp_case_fold {|with\([a-z]+\)|} in
+              Str.search_forward rex text 0 |> ignore;
+              Str.matched_group 1 text
+            with
+            | Not_found -> text
+          end
+          |> String.uncapitalize_ascii
+        in
         Some (name, label)
       with
       | Not_found -> None)
@@ -197,12 +218,16 @@ let make_method comps body =
 let make_type = function
   | "void" -> Void
   | "id" -> Any
+  | "instancetype" -> Instance
   | t -> Simple t
 
 let make_generic_type g t =
   match g with
   | "NSArray" | "NSMutableArray" -> Array (make_type t)
-  | _ -> Generic ((make_type g), (make_type t))
+  | _ -> Generic (make_type g, make_type t)
+
+let make_protocol_type t p =
+  Protocoled (make_type t, p)
 
 (* Debug *)
 
@@ -221,7 +246,10 @@ let rec dump_type = function
   | Simple t -> "Type " ^ t
   | Void -> "Void"
   | Any -> "Any"
+  | Instance -> "Instance"
   | Array t -> "Array " ^ (dump_type t)
+  | Optional t -> "Optional " ^ (dump_type t)
+  | Protocoled (t, p) -> (dump_type t) ^ " with " ^ p
 
 let dump_atom = function
   | Ignore s -> "# " ^ s ^ " #"
@@ -319,6 +347,14 @@ and dump_statement = function
        (dump_expr cond)
        (dump_expr inc)
        (string_of_list dump_statement body)
+  | While (cond, body) ->
+     Printf.sprintf "While %s %s"
+       (dump_expr cond)
+       (string_of_list dump_statement body)
+  | Repeat (body, cond) ->
+     Printf.sprintf "Repeat %s %s"
+       (string_of_list dump_statement body)
+       (dump_expr cond)
 
 (* Declarations *)
 
@@ -335,6 +371,10 @@ let dump_method_arg (label, typ, ident) =
     "Label %s %s Identifier %s"
     label (dump_type typ) ident
 
+let dump_comment = function
+  | Mark s -> "Mark " ^ s
+  | LineComment s -> "// " ^ s
+
 let dump_declar = function
   | Method declar ->
      Printf.sprintf
@@ -343,6 +383,7 @@ let dump_declar = function
        declar.ident
        (string_of_list dump_method_arg declar.params)
        (string_of_list (fun s -> s |> dump_statement |> wrap_in_parens) declar.body)
+  | Comment comment -> dump_comment comment
 
 let dump_program (Program declars) =
   string_of_list dump_declar declars

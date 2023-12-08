@@ -15,7 +15,8 @@ let whitespace = [' ' '\t']+
 let newline = '\n'
 let comment = "//" [' ' '\t']* ([^ '\n']* as com)
 let string = "@\"" ([^ '"']* as str) "\""
-let ignore = '#' ([^ '#']+ as str) '#'
+let ignore = "~" ([^ '~']+ as str) "~"
+let mark = "#pragma mark " ([^ '\n']* as com)
 
 (* Rules *)
 
@@ -23,8 +24,10 @@ rule read = parse
   | whitespace { read lexbuf }
   | newline { Lexing.new_line lexbuf; read lexbuf }
   | comment { COMMENT (com) }
+  | mark { MARK (com) }
 
-  | "_Nonnull" { read lexbuf }
+  | "_Nonnull" { NONNULL }
+  | "_Nullable" { NULLABLE }
 
   | ignore { IGNORE (str) }
   | int { INT (Lexing.lexeme lexbuf |> int_of_string) }
@@ -32,8 +35,10 @@ rule read = parse
   | string { STRING (str) }
 
   | "NULL" { NULL }
-  | "NO" { NO }
-  | "YES" { YES }
+  | "NO"
+  | "@NO" { NO }
+  | "YES"
+  | "@YES" { YES }
 
   | "=" { ASSIGN }
 
@@ -44,6 +49,7 @@ rule read = parse
   | "^" { CARET }
   | "@" { AT }
   | "?" { QUESTION }
+  | "_" { UNDERSCORE }
 
   (* Logic *)
   | "&&" { AND }
@@ -73,7 +79,8 @@ rule read = parse
   | "nil" { NIL }
   | (ident as s) ".class"
   | (ident as s) ".self" { TYPEREF (s) }
-  | (ident as g) "<" (ident as s) whitespace? '*'? ">" { GENTYPE (g, s) }
+  | (ident as g) whitespace* "<" (ident as s) whitespace? '*' ">" { GENTYPE (g, s) }
+  | (ident as t) whitespace* "<" (ident as p) ">" { TYPEPROTO (t, p) }
 
   | "return" { RETURN }
 
@@ -84,6 +91,8 @@ rule read = parse
   | "else" { ELSE }
   | "for" { FOR }
   | "in" { IN }
+  | "while" { WHILE }
+  | "do" { DO }
 
   | ident { IDENT (Lexing.lexeme lexbuf) }
   
