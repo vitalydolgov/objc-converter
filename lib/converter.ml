@@ -18,6 +18,7 @@ let objc_to_swift_types =
   empty
   |> add "BOOL" "Bool"
   |> add "NSInteger" "Int"
+  |> add "NSUInteger" "Int"
 
 let rec map_type = function
   | Simple objc_type ->
@@ -36,6 +37,7 @@ let rec map_type = function
   | Optional (Protocoled (t, p)) ->
      Printf.sprintf "(%s)?" (map_type (Protocoled (t, p)))
   | Optional t -> (map_type t) ^ "?"
+  | Protocoled (Any, p) -> p
   | Protocoled (t, p) -> (map_type t) ^ " & " ^ p
 
 let indent_region str =
@@ -47,13 +49,19 @@ let indent_region str =
 let convert_params args =
   if args = [] then ""
   else
-    let (label, _, _) = List.hd args in
+    let (label, _, name) = List.hd args in
     let converted_args =
       args
       |> List.map (fun (_, t, n) -> n ^ ": " ^ map_type t)
       |> String.concat ", "
     in
-    String.concat " " [label; converted_args]
+    begin
+      if label = name then
+        [converted_args]
+      else
+        [label; converted_args]
+    end
+    |> String.concat " "
 
 let convert_invoc_args to_string args =
   let converted_args =
@@ -177,7 +185,11 @@ and convert_message mesg = match [@warning "-8"] mesg with
   | Message (expr, ident, args) ->
      Printf.sprintf "%s.%s(%s)"
        (convert_expr expr) ident
-       (convert_invoc_args (convert_expr) args)
+       (convert_invoc_args (convert_expr_nowrap) args)
+
+and convert_expr_nowrap = function
+  | Expr expr -> convert_expr expr
+  | expr -> convert_expr expr
 
 and convert_binop = function
   | And -> "&&"
@@ -190,12 +202,17 @@ and convert_binop = function
   | GreaterEqual -> ">="
   | Plus -> "+"
   | Minus -> "-"
+  | Times -> "*"
+  | Divide -> "/"
   | Default -> "??"
 
 and convert_atom = function
   | Ignore s -> "~ignored: " ^ s ^ "~"
   | Int i -> string_of_int i
-  | Float f -> string_of_float f
+  | Float f ->
+     if Float.is_integer f then
+       (f |> int_of_float |> string_of_int) ^ ".0"
+     else string_of_float f
   | Bool b -> string_of_bool b
   | String s -> "\"" ^ s ^ "\""
   | Var x | Prop x -> x

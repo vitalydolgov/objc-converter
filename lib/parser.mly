@@ -10,9 +10,9 @@
 %token NULL
 %token YES NO
 %token SELF NIL
-%token <string> TYPEREF
 
 %token <string * string> GENTYPE
+%token <string> IDPROTO
 %token <string * string> TYPEPROTO
 
 %token <string> COMMENT
@@ -25,11 +25,13 @@
 %token COMMA
 %token CARET
 %token AT
-%token QUESTION
+%token QUESTION (* default, ternary *)
 %token UNDERSCORE
-%token ASTERISK
+
 %token MINUS
 %token PLUS
+%token ASTERISK (* pointer, multiplication *)
+%token SLASH (* division *)
 
 %token ASSIGN
 
@@ -56,18 +58,19 @@
 %token EQU NEQ LEQ GEQ
 %token LESS GREATER
 
-(* Raw types *)
-
 %token ID
 
-(* Other *)
-
 %token <string> IDENT
+%token <string> TYPEREF
 %token <string> SELECTOR
+
+%token IMPLEM_START IMPLEM_END
+
 %token EOF
 
 %left ASSIGN
 %left PLUS MINUS
+%left ASTERISK SLASH
 %left OR
 %right NOT
 %left LESS GREATER
@@ -88,6 +91,7 @@
 %%
 
 program:
+  | IMPLEM_START; p = declar*; IMPLEM_END { Program p }
   | declar* EOF { Program $1 }
 ;
 
@@ -143,10 +147,12 @@ reftype:
   | p=GENTYPE ASTERISK NULLABLE
   | p=GENTYPE ASTERISK { Optional (make_generic_type (fst p) (snd p)) }
   | p=TYPEPROTO ASTERISK NONNULL { make_protocol_type (fst p) (snd p) }
+  | p=IDPROTO NONNULL? { make_protocol_type "id" p }
   | p=TYPEPROTO ASTERISK NULLABLE
   | p=TYPEPROTO ASTERISK { Optional (make_protocol_type (fst p) (snd p)) }
 
 expr:
+  | AT LPAREN; e = expr RPAREN
   | LPAREN; e = expr RPAREN { Expr e }
   | LBRACK; e = expr ID RBRACK | e = expr DOT ID { Property (e, "id") }
   | LBRACK; e = expr s=IDENT RBRACK { Message (e, s, []) }
@@ -167,6 +173,7 @@ expr:
   | e = expr; DOT s=IDENT { Property (e, s) }
   | e1 = expr LBRACK; e2 = expr RBRACK { Element(e1, e2) }
   | s=IDENT LPAREN; l = separated_list(COMMA, e = expr { e }) RPAREN { Func(s, l) }
+  | e = expr; DOT s=IDENT LPAREN; l = separated_list(COMMA, e = expr { ("_", e) }) RPAREN { Message(e, s, l) }
   | AT LBRACK l = separated_list(COMMA, a = atom { a }) RBRACK { ArrayValues l }
   | a = atom { Atom a }
   | LPAREN; t = reftype RPAREN; e = expr
@@ -187,6 +194,8 @@ expr:
   | OR { Or }
   | PLUS { Plus }
   | MINUS { Minus }
+  | ASTERISK { Times }
+  | SLASH { Divide }
   | QUESTION COLON { Default }
 
 %inline assignop:

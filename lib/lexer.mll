@@ -6,7 +6,7 @@ let digit = ['0'-'9']
 let alpha = ['a'-'z' 'A'-'Z']
 
 let int = '-'? digit+
-let float = '-'? digit+ '.' digit+
+let float = ('-'? digit+ '.' digit* as value) 'f'?
 
 let ident = alpha (alpha | digit | '_')*
 let sel_ident = (alpha | '_') (alpha | digit | '_' | ':')*
@@ -18,20 +18,29 @@ let string = "@\"" ([^ '"']* as str) "\""
 let ignore = "~" ([^ '~']+ as str) "~"
 let mark = "#pragma mark " ([^ '\n']* as com)
 
+let implem_start =
+    "@implementation" whitespace+ ident+ (whitespace+ '(' ident* ')')?
+let implem_end = "@end"
+
+let synthesize = "@synthesize" [^ ';']* ';'
+
 (* Rules *)
 
 rule read = parse
   | whitespace { read lexbuf }
   | newline { Lexing.new_line lexbuf; read lexbuf }
+
   | comment { COMMENT (com) }
   | mark { MARK (com) }
+  | implem_start { IMPLEM_START }
+  | implem_end { IMPLEM_END }
 
   | "_Nonnull" { NONNULL }
   | "_Nullable" { NULLABLE }
 
   | ignore { IGNORE (str) }
   | int { INT (Lexing.lexeme lexbuf |> int_of_string) }
-  | float { FLOAT (Lexing.lexeme lexbuf |> float_of_string) }
+  | float { FLOAT (value |> float_of_string) }
   | string { STRING (str) }
 
   | "NULL" { NULL }
@@ -39,6 +48,7 @@ rule read = parse
   | "@NO" { NO }
   | "YES"
   | "@YES" { YES }
+  | "@" (digit+ as value) { INT(value |> int_of_string) }
 
   | "=" { ASSIGN }
 
@@ -65,6 +75,7 @@ rule read = parse
   | "-" { MINUS }
   | "+" { PLUS }
   | "*" { ASTERISK }
+  | "/" { SLASH }
 
   (* Parentheses *)
   | "(" { LPAREN }
@@ -80,6 +91,7 @@ rule read = parse
   | (ident as s) ".class"
   | (ident as s) ".self" { TYPEREF (s) }
   | (ident as g) whitespace* "<" (ident as s) whitespace? '*' ">" { GENTYPE (g, s) }
+  | "id"  whitespace* "<" (ident as p) ">" { IDPROTO (p) }
   | (ident as t) whitespace* "<" (ident as p) ">" { TYPEPROTO (t, p) }
 
   | "return" { RETURN }

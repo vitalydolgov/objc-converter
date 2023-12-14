@@ -36,6 +36,8 @@ type binop =
   | GreaterEqual
   | Plus
   | Minus
+  | Times
+  | Divide
   | Default
 [@@deriving show { with_path = false }]
 
@@ -106,7 +108,7 @@ type method_comp =
   | Body of statement list
 
 let find_last_preposition ident =
-  let prepositions = ["For"; "With"; "From"; "In"; "At"; "Of"] in
+  let prepositions = ["For"; "With"; "From"; "In"; "At"; "Of"; "To"; "By"] in
   let max_index = String.length ident - 1 in
   let inner prep =
     let rex =
@@ -126,6 +128,18 @@ let find_last_preposition ident =
   in
   List.nth_opt found_sorted 0 |> Option.map snd
 
+let drop_prep_label prep ident =
+  let rex =
+    Printf.sprintf "%s\\([A-Za-z0-9]*\\)" prep
+    |> Str.regexp
+  in
+  let _ = Str.search_forward rex ident 0 in
+  let label =
+    Str.matched_group 1 ident
+    |> String.uncapitalize_ascii
+  in
+  label
+
 let split_name_label ident =
   let prep = find_last_preposition ident in
   Option.bind prep (fun prep ->
@@ -139,12 +153,11 @@ let split_name_label ident =
         let label =
           begin
             let text = Str.matched_group 2 ident in
-            try
-              let rex = Str.regexp_case_fold {|with\([a-z]+\)|} in
-              Str.search_forward rex text 0 |> ignore;
-              Str.matched_group 1 text
-            with
-            | Not_found -> text
+            let prep_lower = String.lowercase_ascii prep in
+            if prep <> text && prep_lower = "with" then
+              drop_prep_label prep text
+            else
+              prep
           end
           |> String.uncapitalize_ascii
         in
