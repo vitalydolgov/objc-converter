@@ -22,6 +22,8 @@ let implem_start =
     "@implementation" whitespace+ ident+ (whitespace+ '(' ident* ')')?
 let implem_end = "@end"
 
+
+let dynamic = "@dynamic" [^ ';']* ';'
 let synthesize = "@synthesize" [^ ';']* ';'
 
 (* Rules *)
@@ -29,6 +31,7 @@ let synthesize = "@synthesize" [^ ';']* ';'
 rule read = parse
   | whitespace { read lexbuf }
   | newline { Lexing.new_line lexbuf; read lexbuf }
+  | synthesize | dynamic { read lexbuf }
 
   | comment { COMMENT (com) }
   | mark { MARK (com) }

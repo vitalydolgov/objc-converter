@@ -105,7 +105,8 @@ declar:
     { make_method m b }
 
 method_comp:
-  | MINUS LPAREN t = typ RPAREN { Return_type t }
+  | MINUS LPAREN t = typ RPAREN { Return_type (false, t) }
+  | PLUS LPAREN t = typ RPAREN { Return_type (true, t) }
   | LPAREN; t = typ RPAREN s = IDENT { Param (t, s) }
   | s=IDENT COLON { Label s }
   | s=IDENT { Identifier s }
@@ -158,6 +159,8 @@ expr:
   | LBRACK; e = expr s=IDENT RBRACK { Message (e, s, []) }
   | LBRACK; e = expr; l = list(s=IDENT COLON; e = expr { (s, e) }) RBRACK
     { make_message e l }
+  | LBRACK; e = expr; l = list(s=IDENT COLON; e = expr { (s, e) }) COMMA va = separated_list(COMMA, e = expr { e }) RBRACK
+    { make_message_vararg e l ("_", va) }
   | CARET; i = ioption(t = typ { t }) LBLOCK; b = statement* RBLOCK
     { let t = match i with Some t -> t | None -> Void in
       Block (t, [], b) }
@@ -173,7 +176,7 @@ expr:
   | e = expr; DOT s=IDENT { Property (e, s) }
   | e1 = expr LBRACK; e2 = expr RBRACK { Element(e1, e2) }
   | s=IDENT LPAREN; l = separated_list(COMMA, e = expr { e }) RPAREN { Func(s, l) }
-  | e = expr; DOT s=IDENT LPAREN; l = separated_list(COMMA, e = expr { ("_", e) }) RPAREN { Message(e, s, l) }
+  | e = expr; DOT s=IDENT LPAREN; l = separated_list(COMMA, e = expr { ("_", NormalArg e) }) RPAREN { Message(e, s, l) }
   | AT LBRACK l = separated_list(COMMA, a = atom { a }) RBRACK { ArrayValues l }
   | a = atom { Atom a }
   | LPAREN; t = reftype RPAREN; e = expr

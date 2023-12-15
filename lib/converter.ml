@@ -3,6 +3,8 @@ open Ast
 module StringSet = Set.Make (String)
 module StringMap = Map.Make (String)
 
+let placeholder str = "[<#" ^ str ^ "#>]"
+
 let legacy_types =
   [ "NSIndexPath";
     "NSString";
@@ -19,6 +21,7 @@ let objc_to_swift_types =
   |> add "BOOL" "Bool"
   |> add "NSInteger" "Int"
   |> add "NSUInteger" "Int"
+  |> add "NSArray" (placeholder "type")
 
 let rec map_type = function
   | Simple objc_type ->
@@ -32,7 +35,7 @@ let rec map_type = function
   | Generic (g, t) -> Printf.sprintf "%s<%s>" (map_type g) (map_type t)
   | Void -> "Void"
   | Any -> "Any"
-  | Instance -> "???"
+  | InstanceType -> "Self.Type"
   | Array t -> Printf.sprintf "[%s]" (map_type t)
   | Optional (Protocoled (t, p)) ->
      Printf.sprintf "(%s)?" (map_type (Protocoled (t, p)))
@@ -66,7 +69,11 @@ let convert_params args =
 let convert_invoc_args to_string args =
   let converted_args =
     let inner (label, value) =
-      let value = (value |> to_string) in
+      let value =
+        match value with
+        | NormalArg expr -> to_string expr
+        | VarArg lis -> String.concat ", " (List.map (fun expr -> to_string expr) lis)
+      in
       match label with
       | "_" -> value
       | _ -> label ^ ": " ^ value
@@ -220,23 +227,24 @@ and convert_atom = function
   | Self -> "self"
   | Nil | Null -> "nil"
   | Type t -> map_type t
-  | Selector s -> "Selector(" ^ s ^ ")"
+  | Selector s -> "Selector(\"" ^ s ^ "\")"
 
 and convert_body_indented body =
   List.map convert_statement body |> String.concat "\n" |> indent_region
 
 let convert_return_type typ =
-  if typ = Void || typ = Instance then ""
+  if typ = Void || typ = InstanceType then ""
   else " -> " ^ map_type typ
 
 let convert_declar = function
-  | Method { ident; params; return_type; body } ->
+  | Method { is_static; ident; params; return_type; body } ->
     let body' = match body with
       | [Return (Some expr)] -> [Exec expr]
       | _ -> body
     in
-    Printf.sprintf "@objc public func %s(%s)%s {\n%s\n}"
-      ident
+    Printf.sprintf "@objc public %s%s(%s)%s {\n%s\n}"
+      (if is_static then "static " else "")
+      (if ident = "init" then "init" else "func " ^ ident)
       (convert_params params)
       (convert_return_type return_type)
       (convert_body_indented body')

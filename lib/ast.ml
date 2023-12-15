@@ -3,7 +3,7 @@ type typ =
   | Generic of typ * typ
   | Void
   | Any
-  | Instance
+  | InstanceType
   | Array of typ
   | Optional of typ
   | Protocoled of typ * string
@@ -59,7 +59,7 @@ type expr =
   | Binary of binop * expr * expr
   | Unary of unary * expr
   | Atom of atom
-  | Message of expr * string * (string * expr) list
+  | Message of expr * string * (string * arg) list
   | Property of expr * string
   (* return type, parameters with types, body *)
   | Block of typ * (typ * string) list * statement list
@@ -83,13 +83,18 @@ and statement =
   | While of expr * statement list
   | Repeat of statement list * expr
 
+and arg =
+  | NormalArg of expr
+  | VarArg of expr list
+
 type comment =
   | Mark of string
   | LineComment of string
 
 (** Declaration that compose a program. *)
 type declar =
-  | Method of { ident : string;
+  | Method of { is_static : bool;
+                ident : string;
                 (* label, type, name *)
                 params : (string * typ * string) list;
                 return_type : typ;
@@ -104,7 +109,8 @@ type method_comp =
   | Label of string
   | Param of typ * string
   | Identifier of string
-  | Return_type of typ
+  (* static, type *)
+  | Return_type of bool * typ
   | Body of statement list
 
 let find_last_preposition ident =
@@ -166,8 +172,8 @@ let split_name_label ident =
       | Not_found -> None)
 
 (* Produces a method invocation from receiver and message arguments. *)
-let make_message recv args =
-  let labels, exprs = List.split args in
+let make_message recv labels_args =
+  let labels, exprs = List.split labels_args in
   let name, label =
     let ident = List.hd labels in
     match split_name_label ident with
@@ -175,16 +181,31 @@ let make_message recv args =
     | None -> ident, "_"
   in
   let new_labels = (label :: List.tl labels) in
-  let new_args = List.combine new_labels exprs in
+  let exprs' = List.map (fun expr -> NormalArg expr) exprs in
+  let new_args = List.combine new_labels exprs' in
   Message (recv, name, new_args)
 
-let make_method_wo_params return_type name body =
-  Method { ident = name;
+let make_message_vararg recv labels_args (va_label, va_list) =
+  let labels, exprs = List.split labels_args in
+  let name, label =
+    let ident = List.hd labels in
+    match split_name_label ident with
+    | Some (name, label) -> name, label
+    | None -> ident, "_"
+  in
+  let new_labels = (label :: List.tl labels) in
+  let exprs' = List.map (fun expr -> NormalArg expr) exprs in
+  let new_args = List.combine new_labels exprs' @ [(va_label, VarArg va_list)] in
+  Message (recv, name, new_args)
+
+let make_method_wo_params is_static return_type name body =
+  Method { is_static = is_static;
+           ident = name;
            params = [];
            return_type = return_type;
            body = body }
 
-let make_method_w_params return_type labels params body =
+let make_method_w_params is_static return_type labels params body =
   let name, label =
     let ident = List.hd labels in
     match split_name_label ident with
@@ -198,7 +219,8 @@ let make_method_w_params return_type labels params body =
         (label, typ, ident))
       (label :: List.tl labels)
   in
-  Method { ident = name;
+  Method { is_static = is_static;
+           ident = name;
            params = args;
            return_type = return_type;
            body = body }
@@ -217,21 +239,21 @@ let make_method comps body =
     List.filter (function Identifier _ -> true | _ -> false) comps
     |> List.map (function Identifier s -> s | _ -> assert false)
   in
-  let return_type =
-    let [@warning "-8"] Return_type typ =
+  let is_static, return_type =
+    let [@warning "-8"] Return_type (is_static, typ) =
       List.find (function Return_type _ -> true | _ -> false) comps
     in
-    typ
+    is_static, typ
   in
   if labels = [] then
-    make_method_wo_params return_type (List.hd identifiers) body
+    make_method_wo_params is_static return_type (List.hd identifiers) body
   else
-    make_method_w_params return_type labels params body
+    make_method_w_params is_static return_type labels params body
 
 let make_type = function
   | "void" -> Void
   | "id" -> Any
-  | "instancetype" -> Instance
+  | "instancetype" -> InstanceType
   | t -> Simple t
 
 let make_generic_type g t =
@@ -259,7 +281,7 @@ let rec dump_type = function
   | Simple t -> "Type " ^ t
   | Void -> "Void"
   | Any -> "Any"
-  | Instance -> "Instance"
+  | InstanceType -> "InstanceType"
   | Array t -> "Array " ^ (dump_type t)
   | Optional t -> "Optional " ^ (dump_type t)
   | Protocoled (t, p) -> (dump_type t) ^ " with " ^ p
@@ -286,7 +308,13 @@ let rec dump_expr = function
   | Unary (op, e) -> dump_unary_expr op e
   | Message (expr, name, args) ->
      let string_of_args =
-       string_of_list (fun (s, e) -> s ^ ": " ^ (dump_expr e))
+       string_of_list (fun (label, arg) ->
+           let arg_str =
+             match arg with
+             | NormalArg expr -> (dump_expr expr)
+             | VarArg lis -> string_of_list dump_expr lis
+           in
+           label ^ ": " ^ arg_str)
      in
      Printf.sprintf "Message %s . %s %s"
        (dump_expr expr |> wrap_in_parens) name
@@ -375,7 +403,10 @@ let dump_method_comp = function
   | Label s -> "Label " ^ s
   | Param (t, s) -> (dump_type t) ^ " " ^ s
   | Identifier s -> "Identifier " ^ s
-  | Return_type s -> "Return_type " ^ (dump_type s)
+  | Return_type (is_static, typ) ->
+     Printf.sprintf "%sReturn_type %s"
+       (if is_static then "Static " else "")
+       (dump_type typ)
   | Body l ->
      "Body " ^ string_of_list dump_statement l
 
