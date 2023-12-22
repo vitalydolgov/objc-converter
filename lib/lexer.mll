@@ -92,7 +92,6 @@ rule read = parse
   | "nil" { NIL }
   | (ident as s) ".class"
   | (ident as s) ".self" { TYPEREF (s) }
-  | (ident as g) whitespace* "<" (ident as s) whitespace? '*' ">" { GENTYPE (g, s) }
   | "id"  whitespace* "<" (ident as p) ">" { IDPROTO (p) }
   | (ident as t) whitespace* "<" (ident as p) ">" { TYPEPROTO (t, p) }
 

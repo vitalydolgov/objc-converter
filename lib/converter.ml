@@ -13,7 +13,7 @@ let legacy_types =
     "NSOperation" ]
   |> StringSet.of_list
 
-let drop_prefix typ =
+let drop_ns_prefix typ =
   let len = String.length typ - 2 in
   String.sub (StringSet.find typ legacy_types) 2 len
 
@@ -27,19 +27,28 @@ let objc_to_swift_types =
   |> add "NSMutableArray" ("[" ^ placeholder "type" ^ "]")
 
 let rec map_type = function
-  | SimpleType objc_type ->
+  | PrimitiveType objc_type ->
      begin
-       try drop_prefix objc_type with
+       match StringMap.find_opt objc_type objc_to_swift_types with
+       | Some swift_type -> swift_type
+       | None -> objc_type
+     end
+  | ObjectType objc_type ->
+     begin
+       try drop_ns_prefix objc_type with
        | Not_found ->
           match StringMap.find_opt objc_type objc_to_swift_types with
           | Some swift_type -> swift_type
           | None -> objc_type
      end
-  | GenericType (g, t) -> Printf.sprintf "%s<%s>" (map_type g) (map_type t)
+  | GenericType (g, lis) ->
+     Printf.sprintf "%s<%s>" (map_type g)
+       (String.concat ", " (List.map map_type lis))
   | Void -> "Void"
   | Any -> "Any"
   | InstanceType -> "Self.Type"
   | Array t -> Printf.sprintf "[%s]" (map_type t)
+  | Dictionary (k, v) -> Printf.sprintf "[%s: %s]" (map_type k) (map_type v)
   | Optional (Protocoled (t, p)) ->
      Printf.sprintf "(%s)?" (map_type (Protocoled (t, p)))
   | Optional t -> (map_type t) ^ "?"
@@ -93,7 +102,7 @@ let convert_block_args args = match args with
   | l -> "(" ^ (List.map snd l |> String.concat ", ") ^ ")"
 
 let convert_assign = function
-  | Assign -> "="
+  | ValAssign -> "="
   | IncAssign -> "+="
   | DecAssign -> "-="
 
@@ -182,11 +191,19 @@ and convert_expr = function
        (convert_expr expr2)
   | Func (ident, args) ->
      Printf.sprintf "%s(%s)" ident
-       (String.concat ", "(List.map convert_expr args))
+       (String.concat ", " (List.map convert_expr args))
   | ArrayValues atoms ->
      Printf.sprintf "[%s]"
-       (String.concat ", "(List.map convert_atom atoms))
-  | Mutate (assign, expr1, expr2) ->
+       (String.concat ", " (List.map convert_atom atoms))
+  | DictionaryValues pairs ->
+     if pairs = [] then
+       "[:]"
+     else
+       Printf.sprintf "[%s]"
+         (String.concat ", "
+            (List.map (fun (k, v) ->
+                 convert_atom k ^ ": " ^ convert_atom v) pairs))
+  | Assign (assign, expr1, expr2) ->
      Printf.sprintf "%s %s %s"
        (convert_expr expr1)
        (convert_assign assign)

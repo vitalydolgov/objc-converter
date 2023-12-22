@@ -1,10 +1,12 @@
 type typ =
-  | SimpleType of string
-  | GenericType of typ * typ
+  | PrimitiveType of string
+  | ObjectType of string
+  | GenericType of typ * typ list
   | Void
   | Any
   | InstanceType
   | Array of typ
+  | Dictionary of typ * typ
   | Optional of typ
   | Protocoled of typ * string
 [@@deriving show { with_path = false }]
@@ -12,6 +14,7 @@ type typ =
 type ownership =
   | Strong
   | Weak
+  | NoOwnership
 [@@deriving show { with_path = false }]
 
 type literal =
@@ -46,7 +49,7 @@ type unary =
 
 (** Assignment operators. *)
 type assignop =
-  | Assign
+  | ValAssign
   | IncAssign
   | DecAssign
 [@@deriving show { with_path = false }]
@@ -75,7 +78,8 @@ and expr =
   | Element of expr * expr
   | Func of string * expr list
   | ArrayValues of atom list
-  | Mutate of assignop * expr * expr
+  | DictionaryValues of (atom * atom) list
+  | Assign of assignop * expr * expr
   | Ternary of expr * expr * expr
 [@@deriving show { with_path = false }]
 
@@ -266,18 +270,28 @@ let make_method comps body =
     make_method_w_params is_static return_type labels params body
 
 let make_type = function
-  | "void" -> Void
   | "id" -> Any
   | "instancetype" -> InstanceType
-  | t -> SimpleType t
+  | t -> ObjectType t
 
-let make_generic_type g t =
+let make_generic_type g lis =
   match g with
-  | "NSArray" | "NSMutableArray" -> Array (make_type t)
-  | _ -> GenericType (make_type g, make_type t)
+  | "NSArray" | "NSMutableArray" ->
+     Array (List.nth lis 0)
+  | "NSDictionary" | "NSMutablDictionary" ->
+     let key_type = match List.nth lis 0 with
+       | Optional t -> t
+       | t -> t
+     in
+     Dictionary (key_type, List.nth lis 1)
+  | _ -> GenericType (make_type g, lis)
 
 let make_protocol_type t p =
   Protocoled (make_type t, p)
+
+let make_primitive_type = function
+  | "void" -> Void
+  | t -> PrimitiveType t
 
 (* Debug *)
 
