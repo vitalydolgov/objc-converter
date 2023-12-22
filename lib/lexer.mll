@@ -15,7 +15,6 @@ let whitespace = [' ' '\t']+
 let newline = '\n'
 let comment = "//" [' ' '\t']* ([^ '\n']* as com)
 let string = "@\"" ([^ '"']* as str) "\""
-let ignore = "~" ([^ '~']+ as str) "~"
 let mark = "#pragma mark " ([^ '\n']* as com)
 
 let implem_start =
@@ -40,6 +39,7 @@ rule read = parse
 
   | "_Nonnull" { NONNULL }
   | "_Nullable" { NULLABLE }
+  | "__weak" { WEAK }
 
   | int { INT (Lexing.lexeme lexbuf |> int_of_string) }
   | float { FLOAT (value |> float_of_string) }
@@ -88,6 +88,7 @@ rule read = parse
 
   | "id" { ID }
   | "self" { SELF }
+  | "class" { CLASS }
   | "nil" { NIL }
   | (ident as s) ".class"
   | (ident as s) ".self" { TYPEREF (s) }

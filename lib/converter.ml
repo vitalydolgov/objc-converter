@@ -8,6 +8,7 @@ let placeholder str = "<#" ^ str ^ "#>"
 let legacy_types =
   [ "NSIndexPath";
     "NSString";
+    "NSDate";
     "NSDateFormatter";
     "NSOperation" ]
   |> StringSet.of_list
@@ -116,7 +117,14 @@ let rec convert_statement = function
   | Else (`Cond stat) ->
      Printf.sprintf "else %s"
        (convert_statement stat)
-  | NewVar (_, name, expr) ->
+  | NewVar (ownership, typ, name, expr) when expr = Atom NoValue ->
+     Printf.sprintf "%svar %s: %s = %s"
+       (if ownership = Weak then "weak " else "")
+       name (map_type typ) (convert_expr expr)
+  | NewVar (Weak, _, name, expr) ->
+     Printf.sprintf "weak var %s = %s"
+       name (convert_expr expr)
+  | NewVar (_, _, name, expr) ->
      Printf.sprintf "let %s = %s"
        name (convert_expr expr)
   | Comment comm -> "// " ^ comm
@@ -128,7 +136,7 @@ let rec convert_statement = function
        ident (convert_expr expr)
        (convert_body_indented body)
   | For (assign, cond, incr, body) ->
-     let [@warning "-8"] NewVar (_, ident, init) = assign in
+     let [@warning "-8"] NewVar (_, _, ident, init) = assign in
      Printf.sprintf "var %s = %s\nwhile %s {\n%s\n}"
        ident (convert_expr init)
        (convert_expr cond)

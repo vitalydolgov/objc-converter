@@ -10,6 +10,7 @@
 %token YES NO
 
 %token SELF
+%token CLASS
 %token NULL NIL
 
 %token <string * string> GENTYPE
@@ -35,6 +36,7 @@
 %token ASSIGN
 
 %token NONNULL NULLABLE
+%token WEAK
 
 (* Parentheses *)
 
@@ -83,8 +85,6 @@
 %right RPAREN
 
 %type <Ast.program> program
-%type <Ast.statement> assign
-%type <Ast.typ> reftype
 
 %start program
 
@@ -126,19 +126,24 @@ statement:
   | x = loop { x }
 
 declaration:
-  | t = typ s=IDENT SEMICOLON { NewVar (t, s, Atom NoValue) }
-  | t = typ s=IDENT ASSIGN e = expr SEMICOLON { NewVar (t, s, e) }
+  | weak_opt = ioption(WEAK { () }); t = typ s=IDENT expr_opt = ioption(ASSIGN e = expr { e }) SEMICOLON
+    { let ownership = match weak_opt with
+	| Some _ -> Weak
+	| None -> Strong
+      in
+      let expr = match expr_opt with
+	| Some e -> e
+	| None -> Atom NoValue
+      in
+      NewVar (ownership, t, s, expr) }
 
 loop:
   | FOR LPAREN; t = typ x=IDENT IN; e = expr RPAREN LBLOCK b = statement* RBLOCK
     { ForEach (t, x, e, b) }
-  | FOR LPAREN; s = assign SEMICOLON e1 = expr; SEMICOLON e2 = expr RPAREN LBLOCK b = statement* RBLOCK
+  | FOR LPAREN; s = declaration SEMICOLON e1 = expr; SEMICOLON e2 = expr RPAREN LBLOCK b = statement* RBLOCK
     { For (s, e1, e2, b) }
   | WHILE LPAREN; e = expr RPAREN LBLOCK b = statement* RBLOCK { While (e, b) }
   | DO LBLOCK b = statement* RBLOCK WHILE LPAREN; e = expr RPAREN SEMICOLON { Repeat (b, e) }
-
-assign:
-  | t = typ s=IDENT ASSIGN e = expr { NewVar (t, s, e) }
 
 typ:
   | t = reftype { t }
@@ -161,6 +166,8 @@ expr:
   | AT LPAREN; e = expr RPAREN
   | LPAREN; e = expr RPAREN { Expr e }
   | LBRACK; e = expr ID RBRACK | e = expr DOT ID { Property (e, Ident "id") }
+  | LBRACK; s=IDENT CLASS RBRACK
+  | LBRACK; s=IDENT SELF RBRACK { Atom (TypeRef (SimpleType s)) }
   | LBRACK; e = expr s=IDENT RBRACK { Message (e, s, []) }
   | LBRACK; e = expr; l = list(s=IDENT COLON; e = expr { (s, e) }) RBRACK
     { make_message e l }
@@ -176,8 +183,10 @@ expr:
       Block (t, l, b) }
   | e1 = expr; op = binop; e2 = expr { Binary (op, e1, e2) }
   | NOT; e = expr { Unary (Not, e) }
-  | e = expr PLUS PLUS { Mutate (IncAssign, e, Atom (Literal (Int 1))) }
-  | e = expr MINUS MINUS { Mutate (DecAssign, e, Atom (Literal (Int 1))) }
+  | e = expr PLUS PLUS
+  | PLUS PLUS; e = expr { Mutate (IncAssign, e, Atom (Literal (Int 1))) }
+  | e = expr MINUS MINUS
+  | MINUS MINUS; e = expr  { Mutate (DecAssign, e, Atom (Literal (Int 1))) }
   | e = expr; DOT x = ident { Property (e, x) }
   | e1 = expr LBRACK; e2 = expr RBRACK { Element(e1, e2) }
   | s=IDENT LPAREN; l = separated_list(COMMA, e = expr { e }) RPAREN { Func(s, l) }

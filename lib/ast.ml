@@ -9,6 +9,11 @@ type typ =
   | Protocoled of typ * string
 [@@deriving show { with_path = false }]
 
+type ownership =
+  | Strong
+  | Weak
+[@@deriving show { with_path = false }]
+
 type literal =
   | Int of int
   | Float of float
@@ -64,8 +69,8 @@ and expr =
   | Atom of atom
   | Message of expr * string * (string * arg) list
   | Property of expr * atom
-  (* return type, parameters with types, body *)
   | Block of typ * (typ * string) list * statement list
+  (* return type, parameters with types, body *)
   | TypeCast of typ * expr
   | Element of expr * expr
   | Func of string * expr list
@@ -78,7 +83,7 @@ and expr =
 and statement =
   | If of expr * statement list
   | Else of [`NoCond of statement list | `Cond of statement]
-  | NewVar of typ * string * expr
+  | NewVar of ownership * typ * string * expr
   | Comment of string
   | Exec of expr
   | Return of expr option
@@ -102,8 +107,8 @@ type comment =
 type declar =
   | Method of { is_static : bool;
                 ident : string;
-                (* label, type, name *)
                 params : (string * typ * string) list;
+                         (* label, type, name *)
                 return_type : typ;
                 body : statement list }
   | Comment of comment
@@ -119,8 +124,8 @@ type method_comp =
   | Label of string
   | Param of typ * string
   | Identifier of string
-  (* static, type *)
   | Return_type of bool * typ
+  (* static, type *)
   | Body of statement list
 
 let find_last_preposition ident =
