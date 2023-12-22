@@ -8,7 +8,7 @@ let alpha = ['a'-'z' 'A'-'Z']
 let int = '-'? digit+
 let float = ('-'? digit+ '.' digit* as value) 'f'?
 
-let ident = alpha (alpha | digit | '_')*
+let ident = (alpha | '_') (alpha | digit | '_')*
 let sel_ident = (alpha | '_') (alpha | digit | '_' | ':')*
 
 let whitespace = [' ' '\t']+
@@ -22,7 +22,6 @@ let implem_start =
     "@implementation" whitespace+ ident+ (whitespace+ '(' ident* ')')?
 let implem_end = "@end"
 
-
 let dynamic = "@dynamic" [^ ';']* ';'
 let synthesize = "@synthesize" [^ ';']* ';'
 
@@ -31,8 +30,9 @@ let synthesize = "@synthesize" [^ ';']* ';'
 rule read = parse
   | whitespace { read lexbuf }
   | newline { Lexing.new_line lexbuf; read lexbuf }
-  | synthesize | dynamic { read lexbuf }
+  | "!{" { TEST_START }
 
+  | synthesize | dynamic { read lexbuf }
   | comment { COMMENT (com) }
   | mark { MARK (com) }
   | implem_start { IMPLEM_START }
@@ -41,7 +41,6 @@ rule read = parse
   | "_Nonnull" { NONNULL }
   | "_Nullable" { NULLABLE }
 
-  | ignore { IGNORE (str) }
   | int { INT (Lexing.lexeme lexbuf |> int_of_string) }
   | float { FLOAT (value |> float_of_string) }
   | string { STRING (str) }
@@ -62,7 +61,6 @@ rule read = parse
   | "^" { CARET }
   | "@" { AT }
   | "?" { QUESTION }
-  | "_" { UNDERSCORE }
 
   (* Logic *)
   | "&&" { AND }

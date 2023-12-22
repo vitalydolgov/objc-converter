@@ -1,0 +1,4 @@
+(test
+ (name test_parser)
+ (flags (-open OUnit2))
+ (libraries objc_converter ounit2))

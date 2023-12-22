@@ -1,28 +1,20 @@
 type typ =
-  | Simple of string
-  | Generic of typ * typ
+  | SimpleType of string
+  | GenericType of typ * typ
   | Void
   | Any
   | InstanceType
   | Array of typ
   | Optional of typ
   | Protocoled of typ * string
+[@@deriving show { with_path = false }]
 
-(** Basic component of an expression. *)
-type atom =
-  | Ignore of string
+type literal =
   | Int of int
   | Float of float
   | Bool of bool
   | String of string
-  | Var of string
-  | Prop of string
-  | TypeRef of string
-  | Type of typ
-  | Selector of string
-  | Self
-  | Null
-  | Nil
+[@@deriving show { with_path = false }]
 
 (** Binary operator. *)
 type binop =
@@ -44,31 +36,43 @@ type binop =
 (** Unary operator. *)
 type unary =
   | Not
+  | Negative
 [@@deriving show { with_path = false }]
 
 (** Assignment operators. *)
 type assignop =
-  | Regular
-  | Incr
-  | Decr
+  | Assign
+  | IncAssign
+  | DecAssign
+[@@deriving show { with_path = false }]
+
+(** Basic component of an expression. *)
+type atom =
+  | Ident of string
+  | Literal of literal
+  | TypeRef of typ
+  | Selector of string
+  | Self
+  | NoValue
 [@@deriving show { with_path = false }]
 
 (** Expression is something that returns a result. *)
-type expr =
+and expr =
   | Expr of expr
   | Binary of binop * expr * expr
   | Unary of unary * expr
   | Atom of atom
   | Message of expr * string * (string * arg) list
-  | Property of expr * string
+  | Property of expr * atom
   (* return type, parameters with types, body *)
   | Block of typ * (typ * string) list * statement list
   | TypeCast of typ * expr
   | Element of expr * expr
   | Func of string * expr list
   | ArrayValues of atom list
-  | Mutate of expr * assignop * expr
+  | Mutate of assignop * expr * expr
   | Ternary of expr * expr * expr
+[@@deriving show { with_path = false }]
 
 (** Statement is something that returns no result. *)
 and statement =
@@ -82,14 +86,17 @@ and statement =
   | For of statement * expr * expr * statement list
   | While of expr * statement list
   | Repeat of statement list * expr
+[@@deriving show { with_path = false }]
 
 and arg =
   | NormalArg of expr
   | VarArg of expr list
+[@@deriving show { with_path = false }]
 
 type comment =
   | Mark of string
   | LineComment of string
+[@@deriving show { with_path = false }]
 
 (** Declaration that compose a program. *)
 type declar =
@@ -100,8 +107,11 @@ type declar =
                 return_type : typ;
                 body : statement list }
   | Comment of comment
+[@@deriving show { with_path = false }]
 
-type program = Program of declar list
+type program =
+  | Program of declar list
+  | Statement of statement
 
 (* Helper types *)
 
@@ -254,12 +264,12 @@ let make_type = function
   | "void" -> Void
   | "id" -> Any
   | "instancetype" -> InstanceType
-  | t -> Simple t
+  | t -> SimpleType t
 
 let make_generic_type g t =
   match g with
   | "NSArray" | "NSMutableArray" -> Array (make_type t)
-  | _ -> Generic (make_type g, make_type t)
+  | _ -> GenericType (make_type g, make_type t)
 
 let make_protocol_type t p =
   Protocoled (make_type t, p)
@@ -269,165 +279,6 @@ let make_protocol_type t p =
 let string_of_list to_string lis =
   "[" ^ (String.concat "; " (List.map to_string lis)) ^ "]"
 
-let wrap_in_parens str =
-  if String.contains str ' ' then
-    "(" ^ str ^ ")"
-  else
-    str
-
-let rec dump_type = function
-  | Generic (g, t) ->
-     Printf.sprintf "GenericType %s<%s>" (dump_type g) (dump_type t)
-  | Simple t -> "Type " ^ t
-  | Void -> "Void"
-  | Any -> "Any"
-  | InstanceType -> "InstanceType"
-  | Array t -> "Array " ^ (dump_type t)
-  | Optional t -> "Optional " ^ (dump_type t)
-  | Protocoled (t, p) -> (dump_type t) ^ " with " ^ p
-
-let dump_atom = function
-  | Ignore s -> "# " ^ s ^ " #"
-  | Int i -> "Int " ^ string_of_int i
-  | Float f -> "Float " ^ string_of_float f
-  | Bool b -> "Bool " ^ string_of_bool b
-  | String s -> "String " ^ s
-  | Var s -> "Var " ^ s
-  | Prop s -> "Prop " ^ s
-  | TypeRef s -> "Type " ^ s
-  | Self -> "Self"
-  | Null -> "NULL"
-  | Nil -> "Nil"
-  | Type t -> dump_type t
-  | Selector s -> "Selector " ^ s
-
-let rec dump_expr = function
-  | Atom a -> dump_atom a
-  | Expr e -> dump_expr e
-  | Binary (op, e1, e2) -> dump_binop_expr op e1 e2
-  | Unary (op, e) -> dump_unary_expr op e
-  | Message (expr, name, args) ->
-     let string_of_args =
-       string_of_list (fun (label, arg) ->
-           let arg_str =
-             match arg with
-             | NormalArg expr -> (dump_expr expr)
-             | VarArg lis -> string_of_list dump_expr lis
-           in
-           label ^ ": " ^ arg_str)
-     in
-     Printf.sprintf "Message %s . %s %s"
-       (dump_expr expr |> wrap_in_parens) name
-       (string_of_args args)
-  | Property (expr, ident) ->
-     Printf.sprintf "Property %s . %s"
-       (dump_expr expr |> wrap_in_parens) ident
-  | Block (ret_type, params, body) ->
-     let string_of_param (typ, name) =
-       Printf.sprintf "%s Name %s" (dump_type typ) name
-     in
-     Printf.sprintf "Block Return_type %s Params: %s Body: %s"
-       (dump_type ret_type)
-       (string_of_list string_of_param params)
-       (string_of_list dump_statement body)
-  | TypeCast (typ, expr) ->
-     Printf.sprintf "Cast %s as %s" (dump_expr expr) (dump_type typ)
-  | Element (expr1, expr2) ->
-     Printf.sprintf "Element %s [ %s ]"
-       (dump_expr expr1)
-       (dump_expr expr2)
-  | Func (ident, exprs) ->
-     Printf.sprintf "Function %s ( %s )"
-       ident (string_of_list dump_expr exprs)
-  | ArrayValues atoms ->
-     Printf.sprintf "Array %s" (string_of_list dump_atom atoms)
-  | Mutate (e1, op, e2) ->
-     Printf.sprintf "Mutate %s %s %s"
-       (dump_expr e1) (show_assignop op) (dump_expr e2)
-  | Ternary (cond, expr1, expr2) ->
-     Printf.sprintf "Ternary %s ? %s : %s"
-       (dump_expr cond)
-       (dump_expr expr1)
-       (dump_expr expr2)
-
-and dump_binop_expr op e1 e2 =
-  Printf.sprintf "(%s %s %s)"
-    (show_binop op)
-    (dump_expr e1 |> wrap_in_parens)
-    (dump_expr e2 |> wrap_in_parens)
-
-and dump_unary_expr op e =
-  Printf.sprintf "(%s %s)"
-    (show_unary op)
-    (dump_expr e |> wrap_in_parens)
-
-and dump_statement = function
-  | If (e, l) ->
-     Printf.sprintf "If %s %s"
-       (dump_expr e)
-       (string_of_list dump_statement l)
-  | Else (`NoCond l) ->
-     "Else " ^ (string_of_list dump_statement l)
-  | Else (`Cond s) ->
-     "Else " ^ (dump_statement s)
-  | NewVar (t, s, e) ->
-     Printf.sprintf "NewVar %s %s := %s"
-       (dump_type t) s (dump_expr e)
-  | Comment s -> "// " ^ s
-  | Exec e -> dump_expr e
-  | Return None -> "Return"
-  | Return (Some e) -> "Return " ^ dump_expr e
-  | ForEach (typ, ident, expr, body) ->
-     Printf.sprintf "ForEach %s %s IN %s %s"
-       (dump_type typ) ident
-       (dump_expr expr)
-       (string_of_list dump_statement body)
-  | For (assign, cond, inc, body) ->
-     Printf.sprintf "For %s ?: %s %s %s"
-       (dump_statement assign)
-       (dump_expr cond)
-       (dump_expr inc)
-       (string_of_list dump_statement body)
-  | While (cond, body) ->
-     Printf.sprintf "While %s %s"
-       (dump_expr cond)
-       (string_of_list dump_statement body)
-  | Repeat (body, cond) ->
-     Printf.sprintf "Repeat %s %s"
-       (string_of_list dump_statement body)
-       (dump_expr cond)
-
-(* Declarations *)
-
-let dump_method_comp = function
-  | Label s -> "Label " ^ s
-  | Param (t, s) -> (dump_type t) ^ " " ^ s
-  | Identifier s -> "Identifier " ^ s
-  | Return_type (is_static, typ) ->
-     Printf.sprintf "%sReturn_type %s"
-       (if is_static then "Static " else "")
-       (dump_type typ)
-  | Body l ->
-     "Body " ^ string_of_list dump_statement l
-
-let dump_method_arg (label, typ, ident) =
-  Printf.sprintf
-    "Label %s %s Identifier %s"
-    label (dump_type typ) ident
-
-let dump_comment = function
-  | Mark s -> "Mark " ^ s
-  | LineComment s -> "// " ^ s
-
-let dump_declar = function
-  | Method declar ->
-     Printf.sprintf
-       "Method Return_type %s Identifier %s Arguments: %s Body: %s"
-       (dump_type declar.return_type)
-       declar.ident
-       (string_of_list dump_method_arg declar.params)
-       (string_of_list (fun s -> s |> dump_statement |> wrap_in_parens) declar.body)
-  | Comment comment -> dump_comment comment
-
-let dump_program (Program declars) =
-  string_of_list dump_declar declars
+let dump_program = function
+  | Program declars -> string_of_list show_declar declars
+  | Statement statement -> show_statement statement

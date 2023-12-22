@@ -9,4 +9,5 @@
  (name objc-converter)
  (depends
   (menhir (>= 2.0))
-  ppx_deriving))
+   ppx_deriving
+   ounit2))

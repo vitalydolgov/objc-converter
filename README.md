@@ -20,16 +20,12 @@ A method like the following will be converted to corresponding Swift version.
 }
 ```
 
-For now there is no magic behind and rules for translation are not at all complicated. Basically, it creates a draft version of a method that you need to adopt manually. 
-
-If the parser wasn't able to understand something, you can comment that line to let it go through. There is also an experimantal _ignore_ feature for commenting specific expressions with `~...~`.
+For now there is no magic behind and rules for translation are not at all complicated. Basically, it creates a draft version of a method that you need to adopt manually. It's also possible to convert just one statement or expression by wrapping it in `!{ ... }`, statements *should be* ended with semicolon. 
 
 ```
-MYClass *obj = [~unsupported expression~ createNewObject];
-
- ↓↓
-
-let obj = ~ignored: unsupported expression~.createNewObject()
+!{
+  NSString *str = @"Hello, world!";
+}
 ```
 
 ## Building
@@ -55,3 +51,4 @@ Put one or several Objective-C methods to a file, e.g. `program.txt`, then run w
 % dune exec bin/main.exe program.txt
 ```
 
+For AST use `--dump`. You can also process whole implementation, that is everything between `@implementation` and `@end` including these introducers.

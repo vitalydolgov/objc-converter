@@ -2,14 +2,15 @@
     open Ast
 %}
 
-(* Atoms *)
+(* Literals *)
 
 %token <int> INT
 %token <float> FLOAT
 %token <string> STRING
-%token NULL
 %token YES NO
-%token SELF NIL
+
+%token SELF
+%token NULL NIL
 
 %token <string * string> GENTYPE
 %token <string> IDPROTO
@@ -17,7 +18,6 @@
 
 %token <string> COMMENT
 %token <string> MARK
-%token <string> IGNORE
 
 %token COLON
 %token SEMICOLON
@@ -26,7 +26,6 @@
 %token CARET
 %token AT
 %token QUESTION (* default, ternary *)
-%token UNDERSCORE
 
 %token MINUS
 %token PLUS
@@ -65,17 +64,18 @@
 %token <string> SELECTOR
 
 %token IMPLEM_START IMPLEM_END
+%token TEST_START
 
 %token EOF
 
 %left ASSIGN
+%right IDENT
 %left PLUS MINUS
 %left ASTERISK SLASH
 %left OR
 %right NOT
 %left LESS GREATER
 %left LEQ GEQ EQU NEQ
-%left SELF
 %left DOT
 %left AND
 %left QUESTION COLON
@@ -91,7 +91,9 @@
 %%
 
 program:
-  | IMPLEM_START; p = declar*; IMPLEM_END { Program p }
+  | TEST_START; e = expr RBLOCK EOF { Statement (Exec e) }
+  | TEST_START; s = statement RBLOCK EOF { Statement s }
+  | IMPLEM_START; p = declar*; IMPLEM_END EOF { Program p }
   | declar* EOF { Program $1 }
 ;
 
@@ -117,12 +119,15 @@ statement:
   | ELSE IF LPAREN; e = expr RPAREN LBLOCK; b = statement* RBLOCK
     { Else (`Cond (If (e, b))) }
   | ELSE LBLOCK; b = statement* RBLOCK { Else (`NoCond b) }
-  | t = typ s=IDENT SEMICOLON { NewVar (t, s, Atom Null) }
-  | t = typ s=IDENT ASSIGN e = expr SEMICOLON { NewVar (t, s, e) }
   | s=COMMENT { Comment s }
   | e = expr SEMICOLON { Exec e }
   | RETURN; e = expr? SEMICOLON { Return e }
-  | l = loop { l }
+  | x = declaration { x }
+  | x = loop { x }
+
+declaration:
+  | t = typ s=IDENT SEMICOLON { NewVar (t, s, Atom NoValue) }
+  | t = typ s=IDENT ASSIGN e = expr SEMICOLON { NewVar (t, s, e) }
 
 loop:
   | FOR LPAREN; t = typ x=IDENT IN; e = expr RPAREN LBLOCK b = statement* RBLOCK
@@ -155,7 +160,7 @@ reftype:
 expr:
   | AT LPAREN; e = expr RPAREN
   | LPAREN; e = expr RPAREN { Expr e }
-  | LBRACK; e = expr ID RBRACK | e = expr DOT ID { Property (e, "id") }
+  | LBRACK; e = expr ID RBRACK | e = expr DOT ID { Property (e, Ident "id") }
   | LBRACK; e = expr s=IDENT RBRACK { Message (e, s, []) }
   | LBRACK; e = expr; l = list(s=IDENT COLON; e = expr { (s, e) }) RBRACK
     { make_message e l }
@@ -171,9 +176,9 @@ expr:
       Block (t, l, b) }
   | e1 = expr; op = binop; e2 = expr { Binary (op, e1, e2) }
   | NOT; e = expr { Unary (Not, e) }
-  | e = expr PLUS PLUS { Mutate (e, Incr, Atom (Int 1)) }
-  | e = expr MINUS MINUS { Mutate (e, Decr, Atom (Int 1)) }
-  | e = expr; DOT s=IDENT { Property (e, s) }
+  | e = expr PLUS PLUS { Mutate (IncAssign, e, Atom (Literal (Int 1))) }
+  | e = expr MINUS MINUS { Mutate (DecAssign, e, Atom (Literal (Int 1))) }
+  | e = expr; DOT x = ident { Property (e, x) }
   | e1 = expr LBRACK; e2 = expr RBRACK { Element(e1, e2) }
   | s=IDENT LPAREN; l = separated_list(COMMA, e = expr { e }) RPAREN { Func(s, l) }
   | e = expr; DOT s=IDENT LPAREN; l = separated_list(COMMA, e = expr { ("_", NormalArg e) }) RPAREN { Message(e, s, l) }
@@ -183,7 +188,7 @@ expr:
     { match t with
       | Optional t' -> TypeCast(t', e)
       | _ -> TypeCast(t, e) }
-  | e1 = expr; o = assignop; e2 = expr { Mutate (e1, o, e2) }
+  | e1 = expr; o = assignop; e2 = expr { Mutate (o, e1, e2) }
   | c = expr QUESTION; e1 = expr COLON; e2 = expr { Ternary (c, e1, e2) }
 
 %inline binop:
@@ -202,22 +207,26 @@ expr:
   | QUESTION COLON { Default }
 
 %inline assignop:
-  | ASSIGN { Regular }
-  | PLUS ASSIGN { Incr }
-  | MINUS ASSIGN { Decr }
+  | ASSIGN { Assign }
+  | PLUS ASSIGN { IncAssign }
+  | MINUS ASSIGN { DecAssign }
 
 atom:
-  | s=IGNORE { Ignore s }
-  | i=INT { Int i }
-  | f=FLOAT { Float f }
-  | s=STRING { String s }
-  | s=TYPEREF { TypeRef s }
+  | l = literal { Literal l }
+  | x = ident { x }
+  | s=TYPEREF { TypeRef (SimpleType s) }
   | s=SELECTOR { Selector s }
-  | s=IDENT { Var s }
-  | UNDERSCORE s=IDENT
-  | SELF DOT s=IDENT { Prop s }
   | SELF { Self }
-  | NULL { Null }
-  | NIL { Nil }
+  | NULL | NIL { NoValue }
+
+literal:
+  | i=INT { Int i }
+  | MINUS i=INT { Int (Int.neg i) }
+  | f=FLOAT { Float f }
+  | MINUS f=FLOAT { Float (Float.neg f) }
+  | s=STRING { String s }
   | YES { Bool true }
   | NO { Bool false }
+
+ident:
+ | s=IDENT { Ident s }

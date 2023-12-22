@@ -3,12 +3,13 @@ open Ast
 module StringSet = Set.Make (String)
 module StringMap = Map.Make (String)
 
-let placeholder str = "[<#" ^ str ^ "#>]"
+let placeholder str = "<#" ^ str ^ "#>"
 
 let legacy_types =
   [ "NSIndexPath";
     "NSString";
-    "NSDateFormatter" ]
+    "NSDateFormatter";
+    "NSOperation" ]
   |> StringSet.of_list
 
 let drop_prefix typ =
@@ -21,10 +22,11 @@ let objc_to_swift_types =
   |> add "BOOL" "Bool"
   |> add "NSInteger" "Int"
   |> add "NSUInteger" "Int"
-  |> add "NSArray" (placeholder "type")
+  |> add "NSArray" ("[" ^ placeholder "type" ^ "]")
+  |> add "NSMutableArray" ("[" ^ placeholder "type" ^ "]")
 
 let rec map_type = function
-  | Simple objc_type ->
+  | SimpleType objc_type ->
      begin
        try drop_prefix objc_type with
        | Not_found ->
@@ -32,7 +34,7 @@ let rec map_type = function
           | Some swift_type -> swift_type
           | None -> objc_type
      end
-  | Generic (g, t) -> Printf.sprintf "%s<%s>" (map_type g) (map_type t)
+  | GenericType (g, t) -> Printf.sprintf "%s<%s>" (map_type g) (map_type t)
   | Void -> "Void"
   | Any -> "Any"
   | InstanceType -> "Self.Type"
@@ -90,9 +92,18 @@ let convert_block_args args = match args with
   | l -> "(" ^ (List.map snd l |> String.concat ", ") ^ ")"
 
 let convert_assign = function
-  | Regular -> "="
-  | Incr -> "+="
-  | Decr -> "-="
+  | Assign -> "="
+  | IncAssign -> "+="
+  | DecAssign -> "-="
+
+let convert_literal = function
+  | Int i -> string_of_int i
+  | Float f ->
+     if Float.is_integer f then
+       (f |> int_of_float |> string_of_int) ^ ".0"
+     else string_of_float f
+  | Bool b -> string_of_bool b
+  | String s -> "\"" ^ s ^ "\""
 
 let rec convert_statement = function
   | If (expr, body) ->
@@ -139,13 +150,14 @@ and convert_expr = function
        (convert_binop op)
        (convert_expr expr2)
   | Unary (Not, expr) ->
-     Printf.sprintf "!%s"
-       (convert_expr expr)
+     Printf.sprintf "!%s" (convert_expr expr)
+  | Unary (Negative, expr) ->
+     Printf.sprintf "-%s" (convert_expr expr)
   | Atom atom -> convert_atom atom
   | Message _ as m -> convert_message m
-  | Property (Atom Self, ident) -> ident
+  | Property (Atom Self, ident) -> convert_atom ident
   | Property (expr, ident) ->
-     Printf.sprintf "%s.%s" (convert_expr expr) ident
+     Printf.sprintf "%s.%s" (convert_expr expr) (convert_atom ident)
   | Block (_, [], body) ->
      Printf.sprintf "{\n%s\n}" (convert_body_indented body)
   | Block (_, args, body) ->
@@ -166,7 +178,7 @@ and convert_expr = function
   | ArrayValues atoms ->
      Printf.sprintf "[%s]"
        (String.concat ", "(List.map convert_atom atoms))
-  | Mutate (expr1, assign, expr2) ->
+  | Mutate (assign, expr1, expr2) ->
      Printf.sprintf "%s %s %s"
        (convert_expr expr1)
        (convert_assign assign)
@@ -214,19 +226,11 @@ and convert_binop = function
   | Default -> "??"
 
 and convert_atom = function
-  | Ignore s -> "~ignored: " ^ s ^ "~"
-  | Int i -> string_of_int i
-  | Float f ->
-     if Float.is_integer f then
-       (f |> int_of_float |> string_of_int) ^ ".0"
-     else string_of_float f
-  | Bool b -> string_of_bool b
-  | String s -> "\"" ^ s ^ "\""
-  | Var x | Prop x -> x
-  | TypeRef s -> s ^ ".self"
+  | Literal l -> convert_literal l
+  | Ident x -> x
+  | TypeRef t -> (map_type t) ^ ".self"
   | Self -> "self"
-  | Nil | Null -> "nil"
-  | Type t -> map_type t
+  | NoValue -> "nil"
   | Selector s -> "Selector(\"" ^ s ^ "\")"
 
 and convert_body_indented body =
@@ -251,6 +255,9 @@ let convert_declar = function
   | Comment (Mark str) -> "// MARK: " ^ str
   | Comment (LineComment str) -> "// " ^ str
 
-let process (Program program) =
-  let declars = List.map convert_declar program in
-  String.concat "\n" declars
+let process = function
+  | Program program ->
+     let declars = List.map convert_declar program in
+     String.concat "\n" declars
+  | Statement statement ->
+     convert_statement statement
